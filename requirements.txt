@@ -1,0 +1,13 @@
+# Web Framework
+Flask==3.0.0
+flask-cors==4.0.0
+
+# Existing dependencies
+anthropic
+pyyaml
+requests
+edge-tts
+pyttsx3
+
+# Optional but recommended
+gunicorn==21.2.0  # For production deployment

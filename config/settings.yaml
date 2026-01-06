@@ -1,0 +1,82 @@
+claude:
+  api_key: ""  # Add your Claude API key here
+  model: "claude-3-haiku-20240307"
+
+eleven_labs:
+  api_key: ""  # Add your ElevenLabs API key here (optional)
+  voice_id: "pNInz6obpgDQGcFmaJgB"
+  monthly_quota: 65
+
+pexels:
+  api_key: ""  # Add your Pexels API key here
+
+unsplash:
+  access_key: ""  # Add your Unsplash Access Key here (from unsplash.com/developers)
+
+serpapi:
+  api_key: ""  # Add your SerpAPI key here (from serpapi.com)
+
+vecteezy:
+  api_key: ""  # Add your Vecteezy API key here (from vecteezy.com/developers)
+  account_id: ""  # Your Vecteezy account ID
+
+video:
+  duration_seconds: 25
+  style: "tiktok_explainer"
+  transition:
+    enabled: true
+    type: "fade"  # fade, wiperight, wipeleft, slideright, slideleft, circleopen, circleclose, dissolve
+    duration: 0.5  # transition duration in seconds
+
+platforms:
+  tiktok:
+    width: 1080
+    height: 1920
+    aspect_ratio: "9:16"
+    orientation: "portrait"
+  youtube_shorts:
+    width: 1080
+    height: 1920
+    aspect_ratio: "9:16"
+    orientation: "portrait"
+  instagram_reel:
+    width: 1080
+    height: 1920
+    aspect_ratio: "9:16"
+    orientation: "portrait"
+  youtube:
+    width: 1920
+    height: 1080
+    aspect_ratio: "16:9"
+    orientation: "landscape"
+  instagram_feed:
+    width: 1080
+    height: 1080
+    aspect_ratio: "1:1"
+    orientation: "square"
+
+branding:
+  channel_name: "Echo In The Dark"
+  # Logo image overlay
+  logo:
+    enabled: true
+    image_path: "images/peachfuzz _transparent.png"  # PNG with transparency (use peachfuzz)
+    position: "top_right"  # top_left, top_right, bottom_left, bottom_right
+    width: 300  # Logo width (maintains aspect ratio)
+    padding_x: 30  # Distance from right edge
+    padding_y: 30  # Distance from top edge
+  # Lower third text banner (optional)
+  lower_third:
+    enabled: false  # Disabled - using logo only
+    height: 90
+    y_position: 1700
+    bg_color: "0x000000"
+    bg_opacity: 0.85
+    accent_color: "0xCC0000"
+    accent_height: 8
+  text:
+    font: "Impact"
+    size: 48
+    color: "white"
+    shadow: true
+    border_width: 3

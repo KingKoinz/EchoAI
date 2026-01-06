@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EchoAI - AI Video Generator for Social Media</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        .navbar {
+            background: white;
+            padding: 20px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .logo img {
+            height: 40px;
+        }
+
+        .nav-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+
+        .nav-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 100px 20px;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 3.5em;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        }
+
+        .hero p {
+            font-size: 1.3em;
+            margin-bottom: 40px;
+            opacity: 0.95;
+        }
+
+        .cta-button {
+            background: white;
+            color: #667eea;
+            padding: 18px 40px;
+            font-size: 18px;
+            border: none;
+            border-radius: 30px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .cta-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .platforms {
+            padding: 20px;
+            text-align: center;
+            background: rgba(255,255,255,0.1);
+            margin-top: 40px;
+        }
+
+        .platforms p {
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .platform-icons {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .section {
+            max-width: 1200px;
+            margin: 80px auto;
+            padding: 0 20px;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            color: #1a1a1a;
+        }
+
+        .section-subtitle {
+            text-align: center;
+            font-size: 1.2em;
+            color: #666;
+            margin-bottom: 60px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-top: 60px;
+        }
+
+        .feature-card {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+        }
+
+        .feature-icon {
+            font-size: 3em;
+            margin-bottom: 20px;
+        }
+
+        .feature-card h3 {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            color: #1a1a1a;
+        }
+
+        .feature-card p {
+            color: #666;
+            line-height: 1.8;
+        }
+
+        .stats-section {
+            background: #f8f9fa;
+            padding: 60px 20px 40px;
+            text-align: center;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+            max-width: 1000px;
+            margin: 40px auto;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.05);
+        }
+
+        .stat-number {
+            font-size: 3em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .showcase-section {
+            max-width: 1000px;
+            margin: 40px auto 60px;
+            padding: 0 20px;
+        }
+
+        .showcase-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-top: 40px;
+        }
+
+        .showcase-box {
+            aspect-ratio: 9/16;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            transition: transform 0.3s;
+        }
+
+        .showcase-box:hover {
+            transform: translateY(-10px);
+        }
+
+        .showcase-box.gradient1 {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .showcase-box.gradient2 {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .showcase-box.gradient3 {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .showcase-box.gradient4 {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+
+        .showcase-box video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .how-it-works {
+            background: white;
+            padding: 80px 20px;
+        }
+
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+            max-width: 1200px;
+            margin: 60px auto;
+        }
+
+        .step-card {
+            text-align: center;
+            position: relative;
+        }
+
+        .step-number {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            margin: 0 auto 20px;
+        }
+
+        .step-card h3 {
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            color: #1a1a1a;
+        }
+
+        .step-card p {
+            color: #666;
+            line-height: 1.8;
+        }
+
+        .pricing-section {
+            background: #f8f9fa;
+            padding: 80px 20px;
+        }
+
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            max-width: 1200px;
+            margin: 60px auto;
+        }
+
+        .pricing-card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .pricing-card.featured {
+            border: 3px solid #667eea;
+            transform: scale(1.05);
+        }
+
+        .pricing-card:hover {
+            transform: translateY(-10px);
+        }
+
+        .pricing-card.featured:hover {
+            transform: scale(1.05) translateY(-10px);
+        }
+
+        .plan-name {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #1a1a1a;
+        }
+
+        .plan-price {
+            font-size: 3em;
+            font-weight: bold;
+            color: #667eea;
+            margin: 20px 0;
+        }
+
+        .plan-price span {
+            font-size: 0.4em;
+            color: #666;
+        }
+
+        .plan-features {
+            list-style: none;
+            margin: 30px 0;
+            text-align: left;
+        }
+
+        .plan-features li {
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+            color: #666;
+        }
+
+        .plan-features li:before {
+            content: "✓ ";
+            color: #667eea;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .plan-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s;
+        }
+
+        .plan-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .faq-section {
+            max-width: 800px;
+            margin: 80px auto;
+            padding: 0 20px;
+        }
+
+        .faq-item {
+            background: white;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        .faq-question {
+            padding: 25px;
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #1a1a1a;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .faq-answer {
+            padding: 0 25px 25px;
+            color: #666;
+            line-height: 1.8;
+        }
+
+        .cta-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 100px 20px;
+            text-align: center;
+        }
+
+        .cta-section h2 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+        }
+
+        .cta-section p {
+            font-size: 1.2em;
+            margin-bottom: 40px;
+            opacity: 0.95;
+        }
+
+        .footer {
+            background: #1a1a1a;
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: white;
+            text-decoration: none;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+
+        .footer-links a:hover {
+            opacity: 1;
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2em;
+            }
+            
+            .section-title {
+                font-size: 1.8em;
+            }
+            
+            .pricing-card.featured {
+                transform: scale(1);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <img src="/static/logo.png" alt="EchoAI">
+                <span>EchoAI</span>
+            </div>
+            <a href="/create" class="nav-btn">Create Video</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <h1>Generate Viral Videos<br>with AI on Autopilot</h1>
+        <p>Create engaging short-form videos for TikTok, YouTube Shorts, and Instagram Reels in minutes</p>
+        <a href="/create" class="cta-button">Start Creating Free</a>
+        
+        <div class="platforms">
+            <p>Works with all major platforms</p>
+            <div class="platform-icons">
+                <span style="font-size: 24px;">📱 TikTok</span>
+                <span style="font-size: 24px;">▶️ YouTube</span>
+                <span style="font-size: 24px;">📷 Instagram</span>
+                <span style="font-size: 24px;">👤 Facebook</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="stats-section">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">1M+</div>
+                <div class="stat-label">Videos Created</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">100K+</div>
+                <div class="stat-label">Active Creators</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">50M+</div>
+                <div class="stat-label">Total Views</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Showcase Section -->
+    <section class="showcase-section">
+        <h2 class="section-title">See What You Can Create</h2>
+        <p class="section-subtitle">Real examples from our creators</p>
+        
+        <div class="showcase-grid" id="showcaseGrid">
+            <div class="showcase-box">
+                <video src="/static/final.mp4" controls muted loop></video>
+            </div>
+            <div class="showcase-box">
+                <video src="/static/video1.mp4" controls muted loop></video>
+            </div>
+            <div class="showcase-box">
+                <video src="/static/video2.mp4" controls muted loop></video>
+            </div>
+            <div class="showcase-box">
+                <video src="/static/video3.mp4" controls muted loop></video>
+            </div>
+        </div>
+        
+        <!-- Pagination Controls -->
+        <div style="text-align: center; margin-top: 30px;">
+            <button id="prevBtn" onclick="prevPage()" style="padding: 12px 24px; background: #6366f1; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 0 10px; font-size: 16px;">&larr; Previous</button>
+            <span id="pageInfo" style="color: #94a3b8; margin: 0 15px; font-size: 16px;">1 / 1</span>
+            <button id="nextBtn" onclick="nextPage()" style="padding: 12px 24px; background: #6366f1; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 0 10px; font-size: 16px;">Next &rarr;</button>
+        </div>
+    </section>
+    
+    <script>
+        let allUserVideos = [];
+        let currentPage = 0;
+        const videosPerPage = 4;
+
+        // Load showcase videos dynamically
+        async function loadShowcaseVideos() {
+            try {
+                const response = await fetch('/api/showcase');
+                allUserVideos = await response.json();
+                
+                if (allUserVideos.length > 0) {
+                    renderShowcasePage();
+                    updatePaginationButtons();
+                }
+            } catch (error) {
+                console.log('No user showcase videos yet');
+            }
+        }
+
+        function renderShowcasePage() {
+            const grid = document.getElementById('showcaseGrid');
+            // Remove only user-generated videos (keep first 4 default videos)
+            const boxes = grid.querySelectorAll('.showcase-box');
+            boxes.forEach((box, index) => {
+                if (index >= 4) box.remove();
+            });
+
+            // Add current page of user videos
+            const start = currentPage * videosPerPage;
+            const end = start + videosPerPage;
+            const pageVideos = allUserVideos.slice(start, end);
+
+            pageVideos.forEach(video => {
+                const box = document.createElement('div');
+                box.className = 'showcase-box';
+                const videoEl = document.createElement('video');
+                videoEl.src = `/static/showcase/${video.filename}`;
+                videoEl.controls = true;
+                videoEl.muted = true;
+                videoEl.loop = true;
+                box.appendChild(videoEl);
+                grid.appendChild(box);
+            });
+        }
+
+        function updatePaginationButtons() {
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const pageInfo = document.getElementById('pageInfo');
+
+            const totalPages = Math.ceil(allUserVideos.length / videosPerPage);
+            
+            prevBtn.disabled = currentPage === 0;
+            nextBtn.disabled = currentPage >= totalPages - 1;
+            
+            if (totalPages > 0) {
+                pageInfo.textContent = `${currentPage + 1} / ${totalPages}`;
+            }
+        }
+
+        function nextPage() {
+            const totalPages = Math.ceil(allUserVideos.length / videosPerPage);
+            if (currentPage < totalPages - 1) {
+                currentPage++;
+                renderShowcasePage();
+                updatePaginationButtons();
+            }
+        }
+
+        function prevPage() {
+            if (currentPage > 0) {
+                currentPage--;
+                renderShowcasePage();
+                updatePaginationButtons();
+            }
+        }
+        
+        loadShowcaseVideos();
+    </script>
+
+    <!-- Features Section -->
+    <section class="section">
+        <h2 class="section-title">Everything You Need to Go Viral</h2>
+        <p class="section-subtitle">Powerful AI tools designed for modern content creators</p>
+        
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">✨</div>
+                <h3>AI Script Generation</h3>
+                <p>Our AI creates engaging, viral-optimized scripts tailored to your topic and platform in seconds.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-icon">🎤</div>
+                <h3>Natural Voice Synthesis</h3>
+                <p>Professional voiceovers with multiple voice options. Sounds completely natural and engaging.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-icon">📸</div>
+                <h3>Auto Image Selection</h3>
+                <p>Automatically finds and adds relevant, high-quality images that match your content perfectly.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-icon">🎬</div>
+                <h3>Pro Transitions</h3>
+                <p>Smooth, professional transitions between scenes. Choose from fade, slide, dissolve, and more.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-icon">💬</div>
+                <h3>Dynamic Captions</h3>
+                <p>Eye-catching captions with bounce, karaoke, and color box styles. Perfect for viral content.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-icon">🎨</div>
+                <h3>Custom Branding</h3>
+                <p>Add your logo, choose colors, and maintain consistent branding across all your videos.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-it-works">
+        <h2 class="section-title">How It Works</h2>
+        <p class="section-subtitle">Create professional videos in just 3 simple steps</p>
+        
+        <div class="steps-grid">
+            <div class="step-card">
+                <div class="step-number">1</div>
+                <h3>Choose Your Topic</h3>
+                <p>Enter any topic or idea. Our AI will understand and create engaging content around it.</p>
+            </div>
+            
+            <div class="step-card">
+                <div class="step-number">2</div>
+                <h3>Customize Style</h3>
+                <p>Select platform, duration, transitions, captions, and branding options to match your brand.</p>
+            </div>
+            
+            <div class="step-card">
+                <div class="step-number">3</div>
+                <h3>Download & Share</h3>
+                <p>Get your professional video in minutes. Download and share directly to your social media.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section class="pricing-section">
+        <h2 class="section-title">Simple, Transparent Pricing</h2>
+        <p class="section-subtitle">Choose the plan that's right for you</p>
+        
+        <div class="pricing-grid">
+            <div class="pricing-card">
+                <div class="plan-name">Starter</div>
+                <div class="plan-price">$19<span>/month</span></div>
+                <ul class="plan-features">
+                    <li>10 videos per month</li>
+                    <li>HD quality (1080p)</li>
+                    <li>All platforms supported</li>
+                    <li>Basic customization</li>
+                    <li>Email support</li>
+                </ul>
+                <button class="plan-button">Get Started</button>
+            </div>
+            
+            <div class="pricing-card featured">
+                <div class="plan-name">Pro</div>
+                <div class="plan-price">$39<span>/month</span></div>
+                <ul class="plan-features">
+                    <li>30 videos per month</li>
+                    <li>HD quality (1080p)</li>
+                    <li>All platforms supported</li>
+                    <li>Full customization</li>
+                    <li>Priority support</li>
+                    <li>Custom branding</li>
+                    <li>No watermark</li>
+                </ul>
+                <button class="plan-button">Get Started</button>
+            </div>
+            
+            <div class="pricing-card">
+                <div class="plan-name">Business</div>
+                <div class="plan-price">$99<span>/month</span></div>
+                <ul class="plan-features">
+                    <li>100 videos per month</li>
+                    <li>4K quality</li>
+                    <li>All platforms supported</li>
+                    <li>Full customization</li>
+                    <li>24/7 support</li>
+                    <li>Custom branding</li>
+                    <li>No watermark</li>
+                    <li>API access</li>
+                    <li>Bulk generation</li>
+                </ul>
+                <button class="plan-button">Get Started</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="faq-section">
+        <h2 class="section-title">Frequently Asked Questions</h2>
+        
+        <div class="faq-item">
+            <div class="faq-question">
+                What is EchoAI?
+            </div>
+            <div class="faq-answer">
+                EchoAI is an AI-powered video creation platform that automatically generates engaging short-form videos for social media platforms like TikTok, YouTube Shorts, and Instagram Reels.
+            </div>
+        </div>
+        
+        <div class="faq-item">
+            <div class="faq-question">
+                Do I own the videos I create?
+            </div>
+            <div class="faq-answer">
+                Yes! You own full rights to all videos created with EchoAI. Use them however you want - personal, commercial, or client work.
+            </div>
+        </div>
+        
+        <div class="faq-item">
+            <div class="faq-question">
+                What platforms are supported?
+            </div>
+            <div class="faq-answer">
+                We support all major platforms: TikTok, YouTube Shorts, Instagram Reels, Facebook, and more. Each video is optimized for your chosen platform's dimensions and requirements.
+            </div>
+        </div>
+        
+        <div class="faq-item">
+            <div class="faq-question">
+                How long does it take to create a video?
+            </div>
+            <div class="faq-answer">
+                Most videos are ready in 2-3 minutes. The AI handles script writing, voiceover, image selection, and editing automatically.
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <h2>Ready to Start Creating?</h2>
+        <p>Join thousands of creators making viral content with AI</p>
+        <a href="/create" class="cta-button">Create Your First Video Free</a>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-links">
+            <a href="#">About</a>
+            <a href="#">Features</a>
+            <a href="#">Pricing</a>
+            <a href="#">Contact</a>
+            <a href="#">Privacy</a>
+            <a href="#">Terms</a>
+        </div>
+        <p>&copy; 2026 EchoAI. All rights reserved.</p>
+    </footer>
+</body>
+</html>

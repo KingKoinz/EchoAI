@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EchoAI - AI Video Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #ffffff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: #1a1a1a;
+            margin-bottom: 40px;
+            padding: 20px 0;
+        }
+
+        .header-logo {
+            max-width: 200px;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            color: #666;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.08);
+            border: 1px solid #e5e7eb;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        input[type="text"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress-container {
+            display: none;
+            margin-top: 30px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        .progress-stage {
+            text-align: center;
+            font-size: 18px;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .result-container {
+            display: none;
+            text-align: center;
+        }
+
+        .video-preview {
+            width: 100%;
+            max-width: 600px;
+            border-radius: 15px;
+            margin: 20px auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .download-btn {
+            background: #10b981;
+            margin-top: 20px;
+        }
+
+        .download-btn:hover {
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
+        }
+
+        .error {
+            background: #fee;
+            border: 2px solid #f88;
+            padding: 15px;
+            border-radius: 10px;
+            color: #c33;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .feature-tags {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .tag {
+            background: #f0f0f0;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .example-topics {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .example-topic {
+            background: #f0f0f0;
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .example-topic:hover {
+            background: #e0e0e0;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 30px 0 15px 0;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+
+        .upload-area {
+            border: 2px dashed #d0d0d0;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #fafafa;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f5f5ff;
+        }
+
+        .upload-area input[type="file"] {
+            display: none;
+        }
+
+        .upload-label {
+            display: block;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .file-name {
+            margin-top: 10px;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                max-width: 100%;
+            }
+
+            .header {
+                margin-bottom: 20px;
+                padding: 10px 0;
+            }
+
+            .header-logo {
+                max-width: 120px;
+                margin-bottom: 10px;
+            }
+
+            .header h1 {
+                font-size: 1.8em;
+                margin-bottom: 5px;
+            }
+
+            .header p {
+                font-size: 0.95em;
+            }
+            
+            .card {
+                padding: 20px 15px;
+                border-radius: 15px;
+                margin-bottom: 15px;
+            }
+
+            .form-group {
+                margin-bottom: 20px;
+            }
+
+            /* Stack all form controls vertically on mobile */
+            .options-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            /* Bigger touch targets */
+            input[type="text"],
+            select,
+            textarea {
+                padding: 14px 12px;
+                font-size: 16px;
+            }
+
+            .btn {
+                padding: 16px 30px;
+                font-size: 17px;
+                border-radius: 12px;
+            }
+
+            /* Better mobile upload areas */
+            .upload-area {
+                padding: 30px 15px;
+                font-size: 15px;
+            }
+
+            .upload-label {
+                font-size: 15px;
+            }
+
+            /* Compact section titles */
+            .section-title {
+                font-size: 16px;
+                margin: 20px 0 12px 0;
+                padding-bottom: 6px;
+            }
+
+            /* Mobile-friendly example topics */
+            .example-topics {
+                flex-direction: column;
+                gap: 8px;
+                align-items: flex-start;
+            }
+
+            .example-topic {
+                font-size: 14px;
+                padding: 8px 14px;
+                width: 100%;
+                text-align: center;
+            }
+
+            /* Hide showcase on mobile to save space */
+            #showcaseSection {
+                display: none;
+            }
+
+            /* Better progress display */
+            .progress-container {
+                margin-top: 20px;
+            }
+
+            .progress-bar {
+                height: 35px;
+            }
+
+            .progress-stage {
+                font-size: 16px;
+            }
+
+            /* Video preview sizing */
+            .video-preview {
+                max-width: 100%;
+                border-radius: 10px;
+                margin: 15px auto;
+            }
+
+            /* Feature tags wrap better */
+            .feature-tags {
+                gap: 8px;
+            }
+
+            .tag {
+                font-size: 13px;
+                padding: 6px 12px;
+            }
+
+            /* Adjust select dropdowns */
+            select {
+                background-position: right 8px center;
+            }
+        }
+
+        /* Extra small phones */
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 1.5em;
+            }
+
+            .header p {
+                font-size: 0.9em;
+            }
+
+            .card {
+                padding: 15px 10px;
+            }
+
+            .btn {
+                font-size: 16px;
+                padding: 14px 25px;
+            }
+
+            input[type="text"],
+            select,
+            textarea {
+                font-size: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="/static/logo.png" alt="EchoAI" class="header-logo">
+            <h1>🎬 EchoAI</h1>
+            <p>Create viral short-form videos with AI in minutes</p>
+        </div>
+
+        <div class="card">
+            <form id="videoForm">
+                <div class="form-group">
+                    <label>Video Topic *</label>
+                    <textarea 
+                        id="topic" 
+                        placeholder="e.g., Things I Ignored Because She Was Cute"
+                        required
+                    ></textarea>
+                    <div class="example-topics">
+                        <span style="font-size: 12px; color: #999;">Quick ideas:</span>
+                        <span class="example-topic" onclick="fillTopic('Surprising Facts About Ancient Egypt')">Ancient Egypt Facts</span>
+                        <span class="example-topic" onclick="fillTopic('Things That Sound Fake But Are True')">True But Fake</span>
+                        <span class="example-topic" onclick="fillTopic('Life Hacks That Actually Work')">Life Hacks</span>
+                    </div>
+                </div>
+
+                <div class="section-title">🎬 Video Elements</div>
+                <div class="form-group">
+                    <label>Content Type</label>
+                    <select id="content_type" onchange="toggleUploadSections()">
+                        <option value="images" selected>Images Only (Auto-Generated)</option>
+                        <option value="videos">Videos Only (Auto-Generated)</option>
+                        <option value="combo">Combo: Images + Videos</option>
+                        <option value="upload_images">Upload My Own Images</option>
+                        <option value="upload_videos">Upload My Own Videos</option>
+                        <option value="upload_both">Upload Images + Videos</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="imageUploadSection" style="display: none;">
+                    <label>Upload Images (JPG/PNG)</label>
+                    <div class="upload-area" onclick="document.getElementById('imageFiles').click()">
+                        <input type="file" id="imageFiles" accept="image/jpeg,image/png" multiple onchange="handleImageUpload(event)">
+                        <span class="upload-label">📁 Click to upload images (multiple)</span>
+                        <span class="file-name" id="imageFileNames"></span>
+                    </div>
+                </div>
+
+                <div class="form-group" id="videoUploadSection" style="display: none;">
+                    <label>Upload Videos (MP4)</label>
+                    <div class="upload-area" onclick="document.getElementById('videoFiles').click()">
+                        <input type="file" id="videoFiles" accept="video/mp4" multiple onchange="handleVideoUpload(event)">
+                        <span class="upload-label">📁 Click to upload videos (multiple)</span>
+                        <span class="file-name" id="videoFileNames"></span>
+                    </div>
+                </div>
+
+                <div class="options-grid">
+                    <div class="form-group">
+                        <label>Video Style (AI writing tone)</label>
+                        <select id="style">
+                            <option value="viral_facts">Viral Facts - Fast-paced, shocking, Gen-Z energy</option>
+                            <option value="story_time">Story Time - Narrative arc with dramatic storytelling</option>
+                            <option value="motivational">Motivational - Inspirational, empowering call-to-action</option>
+                            <option value="educational">Educational - Clear step-by-step explanations</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Voice</label>
+                        <select id="voice">
+                            <optgroup label="Male - US">
+                                <option value="en-US-GuyNeural" selected>Guy (Deep, Confident)</option>
+                                <option value="en-US-ChristopherNeural">Christopher (Warm, Friendly)</option>
+                                <option value="en-US-EricNeural">Eric (Energetic, Young)</option>
+                                <option value="en-US-JacobNeural">Jacob (Smooth, Professional)</option>
+                                <option value="en-US-RogerNeural">Roger (Mature, Authoritative)</option>
+                            </optgroup>
+                            <optgroup label="Female - US">
+                                <option value="en-US-AriaNeural">Aria (Upbeat, Enthusiastic)</option>
+                                <option value="en-US-JennyNeural">Jenny (Conversational, Warm)</option>
+                                <option value="en-US-MichelleNeural">Michelle (Clear, Professional)</option>
+                                <option value="en-US-SaraNeural">Sara (Soft, Gentle)</option>
+                            </optgroup>
+                            <optgroup label="British">
+                                <option value="en-GB-RyanNeural">Ryan (Male, British)</option>
+                                <option value="en-GB-SoniaNeural">Sonia (Female, British)</option>
+                            </optgroup>
+                            <optgroup label="Australian">
+                                <option value="en-AU-WilliamNeural">William (Male, Australian)</option>
+                                <option value="en-AU-NatashaNeural">Natasha (Female, Australian)</option>
+                            </optgroup>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Duration (seconds)</label>
+                        <select id="duration">
+                            <option value="15">15s</option>
+                            <option value="25" selected>25s</option>
+                            <option value="30">30s</option>
+                            <option value="45">45s</option>
+                            <option value="60">60s</option>
+                            <option value="90">90s</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="options-grid">
+                    <div class="form-group">
+                        <label>Transition Effect</label>
+                        <select id="transition">
+                            <option value="fade">Fade</option>
+                            <option value="slideright">Slide Right</option>
+                            <option value="slideleft">Slide Left</option>
+                            <option value="wiperight">Wipe Right</option>
+                            <option value="dissolve">Dissolve</option>
+                            <option value="circleopen">Circle Open</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Caption Style</label>
+                        <select id="caption_style">
+                            <option value="none">No Captions</option>
+                            <option value="bounce" selected>Bounce</option>
+                            <option value="color_box">Color Box</option>
+                            <option value="karaoke">Karaoke</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Logo Overlay</label>
+                        <select id="logo_option">
+                            <option value="none">No Logo</option>
+                            <option value="default" selected>Default Logo</option>
+                            <option value="upload">Upload Logo</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group" id="logoUploadSection" style="display: none;">
+                    <label>Upload Logo (PNG/JPG)</label>
+                    <div class="upload-area" onclick="document.getElementById('logoFile').click()">
+                        <input type="file" id="logoFile" accept="image/png,image/jpeg,image/jpg" onchange="handleLogoUpload(event)">
+                        <span class="upload-label">📁 Click to upload PNG or JPG</span>
+                        <span class="file-name" id="logoFileName"></span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Platform</label>
+                    <select id="platform">
+                        <option value="tiktok">TikTok (9:16)</option>
+                        <option value="youtube_shorts">YouTube Shorts (9:16)</option>
+                        <option value="instagram_reel">Instagram Reel (9:16)</option>
+                        <option value="youtube">YouTube (16:9)</option>
+                        <option value="instagram_feed">Instagram Feed (1:1)</option>
+                    </select>
+                </div>
+
+                <div class="feature-tags">
+                    <span class="tag">✨ AI Script</span>
+                    <span class="tag">🎤 Voice Synthesis</span>
+                    <span class="tag">📸 Auto Images</span>
+                    <span class="tag">🎬 Pro Transitions</span>
+                    <span class="tag">💬 Captions</span>
+                </div>
+
+                <button type="submit" class="btn" id="generateBtn">
+                    🚀 Generate Video
+                </button>
+            </form>
+
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill">0%</div>
+                </div>
+                <div class="progress-stage" id="progressStage">Initializing...</div>
+            </div>
+
+            <div class="error" id="errorContainer"></div>
+
+            <div class="result-container" id="resultContainer">
+                <h2 style="color: #10b981; margin-bottom: 20px;">✅ Video Ready!</h2>
+                <video class="video-preview" id="videoPreview" controls></video>
+                <button class="btn download-btn" id="downloadBtn">
+                    📥 Download Video
+                </button>
+                <button class="btn" onclick="location.reload()" style="margin-top: 10px; background: #6b7280;">
+                    🔄 Create Another Video
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentJobId = null;
+        let uploadedLogo = null;
+        let uploadedImages = [];
+        let uploadedVideos = [];
+
+        function fillTopic(topic) {
+            document.getElementById('topic').value = topic;
+        }
+
+        // Handle logo option change
+        document.getElementById('logo_option').addEventListener('change', function(e) {
+            const uploadSection = document.getElementById('logoUploadSection');
+            if (e.target.value === 'upload') {
+                uploadSection.style.display = 'block';
+            } else {
+                uploadSection.style.display = 'none';
+            }
+        });
+
+        // Handle content type change
+        function toggleUploadSections() {
+            const contentType = document.getElementById('content_type').value;
+            const imageSection = document.getElementById('imageUploadSection');
+            const videoSection = document.getElementById('videoUploadSection');
+            
+            imageSection.style.display = 'none';
+            videoSection.style.display = 'none';
+            
+            if (contentType === 'upload_images' || contentType === 'upload_both') {
+                imageSection.style.display = 'block';
+            }
+            if (contentType === 'upload_videos' || contentType === 'upload_both') {
+                videoSection.style.display = 'block';
+            }
+        }
+
+        function handleLogoUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                uploadedLogo = file;
+                document.getElementById('logoFileName').textContent = '✓ ' + file.name;
+            }
+        }
+
+        function handleImageUpload(event) {
+            const files = Array.from(event.target.files);
+            if (files.length > 0) {
+                uploadedImages = files;
+                document.getElementById('imageFileNames').textContent = '✓ ' + files.length + ' image(s) selected';
+            }
+        }
+
+        function handleVideoUpload(event) {
+            const files = Array.from(event.target.files);
+            if (files.length > 0) {
+                uploadedVideos = files;
+                document.getElementById('videoFileNames').textContent = '✓ ' + files.length + ' video(s) selected';
+            }
+        }
+
+        document.getElementById('videoForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const topic = document.getElementById('topic').value;
+            const platform = document.getElementById('platform').value;
+            const style = document.getElementById('style').value;
+            const voice = document.getElementById('voice').value;
+            const duration = document.getElementById('duration').value;
+            const transition = document.getElementById('transition').value;
+            const logoOption = document.getElementById('logo_option').value;
+            const captionStyle = document.getElementById('caption_style').value;
+            const contentType = document.getElementById('content_type').value;
+            const logoFile = document.getElementById('logoFile').files[0];
+            const imageFiles = document.getElementById('imageFiles').files;
+            const videoFiles = document.getElementById('videoFiles').files;
+
+            // Show progress
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('generateBtn').disabled = true;
+            document.getElementById('generateBtn').textContent = '⏳ Generating...';
+            document.getElementById('errorContainer').style.display = 'none';
+
+            try {
+                // Check if we need to send form data (for file uploads) or JSON
+                let body, headers;
+                const needsFormData = (logoOption === 'upload' && logoFile) || 
+                                     (contentType === 'upload_images' && imageFiles.length > 0) ||
+                                     (contentType === 'upload_videos' && videoFiles.length > 0) ||
+                                     (contentType === 'upload_both' && (imageFiles.length > 0 || videoFiles.length > 0));
+                
+                if (needsFormData) {
+                    // Use FormData for file upload
+                    const formData = new FormData();
+                    formData.append('topic', topic);
+                    formData.append('platform', platform);
+                    formData.append('style', style);
+                    formData.append('voice', voice);
+                    formData.append('duration', duration);
+                    formData.append('transition', transition);
+                    formData.append('logo_option', logoOption);
+                    formData.append('caption_style', captionStyle);
+                    formData.append('content_type', contentType);
+                    
+                    if (logoFile) {
+                        formData.append('logo_file', logoFile);
+                    }
+                    
+                    // Append uploaded images
+                    if ((contentType === 'upload_images' || contentType === 'upload_both') && imageFiles.length > 0) {
+                        for (let i = 0; i < imageFiles.length; i++) {
+                            formData.append('image_files', imageFiles[i]);
+                        }
+                    }
+                    
+                    // Append uploaded videos
+                    if ((contentType === 'upload_videos' || contentType === 'upload_both') && videoFiles.length > 0) {
+                        for (let i = 0; i < videoFiles.length; i++) {
+                            formData.append('video_files', videoFiles[i]);
+                        }
+                    }
+                    
+                    body = formData;
+                    headers = {}; // Let browser set Content-Type with boundary
+                } else {
+                    // Use JSON
+                    body = JSON.stringify({
+                        topic,
+                        platform,
+                        style,
+                        voice,
+                        duration,
+                        transition,
+                        logo_option: logoOption,
+                        caption_style: captionStyle,
+                        content_type: contentType
+                    });
+                    headers = { 'Content-Type': 'application/json' };
+                }
+
+                // Start generation
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: headers,
+                    body: body
+                });
+
+                // Check if response is JSON
+                const responseContentType = response.headers.get('content-type');
+                if (!responseContentType || !responseContentType.includes('application/json')) {
+                    throw new Error('Server error - please try again');
+                }
+
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to start generation');
+                }
+
+                currentJobId = data.job_id;
+
+                // Poll for status
+                pollStatus();
+
+            } catch (error) {
+                showError(error.message);
+                resetForm();
+            }
+        });
+
+        async function pollStatus() {
+            if (!currentJobId) return;
+
+            try {
+                const response = await fetch(`/api/status/${currentJobId}`);
+                const data = await response.json();
+
+                // Update progress
+                document.getElementById('progressFill').style.width = data.progress + '%';
+                document.getElementById('progressFill').textContent = data.progress + '%';
+                document.getElementById('progressStage').textContent = data.stage;
+
+                if (data.status === 'completed') {
+                    // Show video
+                    showVideo();
+                } else if (data.status === 'failed') {
+                    throw new Error(data.error || 'Video generation failed');
+                } else {
+                    // Continue polling
+                    setTimeout(pollStatus, 2000);
+                }
+
+            } catch (error) {
+                showError(error.message);
+                resetForm();
+            }
+        }
+
+        function showVideo() {
+            document.getElementById('progressContainer').style.display = 'none';
+            document.getElementById('resultContainer').style.display = 'block';
+            
+            const streamUrl = `/api/video/${currentJobId}`;
+            const downloadUrl = `/api/download/${currentJobId}`;
+            
+            document.getElementById('videoPreview').src = streamUrl;
+            
+            document.getElementById('downloadBtn').onclick = () => {
+                window.location.href = downloadUrl;
+            };
+        }
+
+        function showError(message) {
+            const errorContainer = document.getElementById('errorContainer');
+            errorContainer.textContent = '❌ Error: ' + message;
+            errorContainer.style.display = 'block';
+        }
+
+        function resetForm() {
+            document.getElementById('generateBtn').disabled = false;
+            document.getElementById('generateBtn').textContent = '🚀 Generate Video';
+            document.getElementById('progressContainer').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
