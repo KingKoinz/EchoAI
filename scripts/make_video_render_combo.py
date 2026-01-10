@@ -51,14 +51,16 @@ def render_combo_video(platform="tiktok"):
     video_height = platform_spec.get("height", 1920)
     
     # Get caption style from config
-    caption_style = config.get("caption_style", "bounce")
+    caption_style = config.get("video", {}).get("caption_style", "bounce")
+    
+    # Get logo overlay settings from config
+    logo_enabled = config.get("branding", {}).get("logo", {}).get("enabled", False)
+    logo_image = config.get("branding", {}).get("logo", {}).get("image_path", "images/echo_transparent.png")
+    logo_position = config.get("branding", {}).get("logo", {}).get("position", "top_right")
+    logo_width = config.get("branding", {}).get("logo", {}).get("width", 260)
+    logo_padding = config.get("branding", {}).get("logo", {}).get("padding_x", 15)
     
     print(f" Platform: {platform} ({video_width}x{video_height})")
-    
-    # Settings
-    logo_image = branding.get("logo_image", "echo_transparent.png")
-    logo_width = branding.get("logo_width", 260)
-    logo_padding = branding.get("logo_padding", 15)
     
     # Paths
     logo_path = BASE_DIR / logo_image
@@ -245,16 +247,35 @@ def render_combo_video(platform="tiktok"):
     
     filter_complex = "".join(filter_parts)
     
-    # Add logo overlay in top right
-    logo_x = video_width - logo_width - logo_padding
-    logo_y = logo_padding
-    logo_path_str = str(logo_path).replace("\\", "\\\\\\\\").replace(":", "\\\\:")
-    filter_complex += f"movie={logo_path_str},scale={logo_width}:-1,loop=loop=-1:size=1[logo];"
-    filter_complex += f"[base][logo]overlay={logo_x}:{logo_y}[with_logo];"
+    # Add logo overlay if enabled
+    if logo_enabled:
+        # Calculate logo position
+        if logo_position == "top_right":
+            logo_x = video_width - logo_width - logo_padding
+            logo_y = logo_padding
+        elif logo_position == "top_left":
+            logo_x = logo_padding
+            logo_y = logo_padding
+        elif logo_position == "bottom_right":
+            logo_x = video_width - logo_width - logo_padding
+            logo_y = video_height - logo_width - logo_padding  # Approximate square logo
+        elif logo_position == "bottom_left":
+            logo_x = logo_padding
+            logo_y = video_height - logo_width - logo_padding
+        else:  # default top_right
+            logo_x = video_width - logo_width - logo_padding
+            logo_y = logo_padding
+        
+        logo_path_str = str(logo_path).replace("\\", "\\\\\\\\").replace(":", "\\\\:")
+        filter_complex += f"movie={logo_path_str},scale={logo_width}:-1,loop=loop=-1:size=1[logo];"
+        filter_complex += f"[base][logo]overlay={logo_x}:{logo_y}[with_logo];"
+        base_tag = "[with_logo]"
+    else:
+        base_tag = "[base]"
     
     # Add captions
     captions_str = str(captions_file).replace("\\", "\\\\\\\\").replace(":", "\\\\:")
-    filter_complex += f"[with_logo]subtitles=filename={captions_str}[out]"
+    filter_complex += f"{base_tag}subtitles=filename={captions_str}[out]"
     
     # Save filter to file
     filter_file = BASE_DIR / "filter_complex.txt"

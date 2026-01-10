@@ -91,7 +91,15 @@ def main():
     height = platform_spec.get("height", 1920)
     
     # Get caption style from config
-    caption_style = config.get("caption_style", "bounce")
+    caption_style = config.get("video", {}).get("caption_style", "bounce")
+    
+    # Get logo overlay settings
+    logo_enabled = config.get("branding", {}).get("logo", {}).get("enabled", False)
+    logo_path = config.get("branding", {}).get("logo", {}).get("image_path", "")
+    logo_position = config.get("branding", {}).get("logo", {}).get("position", "top_right")
+    logo_width = config.get("branding", {}).get("logo", {}).get("width", 300)
+    logo_padding_x = config.get("branding", {}).get("logo", {}).get("padding_x", 30)
+    logo_padding_y = config.get("branding", {}).get("logo", {}).get("padding_y", 30)
     
     print(f" Platform: {platform} ({width}x{height})")
 
@@ -169,12 +177,45 @@ def main():
     # Concatenate all video segments
     concat_filter = f"{concat_inputs}concat=n={num_segments}:v=1:a=0[video]"
     
+    # Build overlay chain: video -> captions -> logo
+    filter_chain = []
+    current_tag = "[video]"
+    
     # Add ASS overlay only if captions enabled
     if caption_style != "none" and ASS_FILE.exists():
-        ass_filter = "[video]ass=captions.ass[v]"
-        full_filter = ';'.join(filter_parts + [concat_filter, ass_filter])
+        filter_chain.append(f"{current_tag}ass=captions.ass[vcap]")
+        current_tag = "[vcap]"
+    
+    # Add logo overlay if enabled
+    if logo_enabled and logo_path:
+        logo_file = BASE_DIR / logo_path
+        if logo_file.exists():
+            # Calculate logo position based on setting
+            if logo_position == "top_right":
+                logo_x = f"W-w-{logo_padding_x}"
+                logo_y = str(logo_padding_y)
+            elif logo_position == "top_left":
+                logo_x = str(logo_padding_x)
+                logo_y = str(logo_padding_y)
+            elif logo_position == "bottom_right":
+                logo_x = f"W-w-{logo_padding_x}"
+                logo_y = f"H-h-{logo_padding_y}"
+            elif logo_position == "bottom_left":
+                logo_x = str(logo_padding_x)
+                logo_y = f"H-h-{logo_padding_y}"
+            else:  # default top_right
+                logo_x = f"W-w-{logo_padding_x}"
+                logo_y = str(logo_padding_y)
+            
+            filter_chain.append(f"movie={str(logo_file.absolute())}:loop=0,setpts=N/(FRAME_RATE*TB),scale={logo_width}:-1[logo];{current_tag}[logo]overlay={logo_x}:{logo_y}[vlogo]")
+            current_tag = "[vlogo]"
+    
+    # Final output tag
+    if filter_chain:
+        full_filter = ';'.join(filter_parts + [concat_filter] + filter_chain)
+        full_filter += f";{current_tag}copy[v]"
     else:
-        # No captions - use video output directly
+        # No captions or logo - use video output directly
         full_filter = ';'.join(filter_parts + [concat_filter])
         full_filter = full_filter.replace("[video]", "[v]")
 
