@@ -151,7 +151,7 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             JOBS[job_id]["progress"] = 20
             
             cmd = [sys.executable, str(scripts_dir / "make_script.py"), topic]
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=600)
             print(f"✅ Script generated: {len(result.stdout)} chars")
         else:
             # Skip AI - just use existing script.txt or create dummy
