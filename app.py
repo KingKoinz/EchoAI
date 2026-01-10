@@ -112,7 +112,8 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         config["video"]["duration_seconds"] = duration
         config["video"]["style"] = style
         config["video"]["voice"] = voice
-        config["video"]["transition"]["type"] = transition
+        config["video"]["transition"]["type"] = transition if transition != "none" else "fade"
+        config["video"]["transition"]["enabled"] = transition != "none"
         config["video"]["caption_style"] = caption_style
         config["video"]["render_mode"] = content_type
         
