@@ -177,6 +177,12 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
                 caption_script = "make_captions_color_box.py"
             elif caption_style == "karaoke":
                 caption_script = "make_captions_karaoke.py"
+            elif caption_style == "yellow_box":
+                caption_script = "make_captions_yellow_box.py"
+            elif caption_style == "white_box":
+                caption_script = "make_captions_white_box.py"
+            elif caption_style == "single_pop":
+                caption_script = "make_captions_single_pop.py"
             else:
                 caption_script = "make_captions_bounce.py"  # Default
             
