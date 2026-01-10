@@ -475,6 +475,12 @@
             .pricing-card.featured {
                 transform: scale(1);
             }
+            
+            /* Show showcase as 2 columns on mobile */
+            .showcase-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
         }
     </style>
 </head>
@@ -532,16 +538,16 @@
         
         <div class="showcase-grid" id="showcaseGrid">
             <div class="showcase-box">
-                <video src="/static/final.mp4" controls muted loop></video>
+                <video src="/static/final.mp4" autoplay muted loop playsinline class="preview-clip"></video>
             </div>
             <div class="showcase-box">
-                <video src="/static/video1.mp4" controls muted loop></video>
+                <video src="/static/video1.mp4" autoplay muted loop playsinline class="preview-clip"></video>
             </div>
             <div class="showcase-box">
-                <video src="/static/video2.mp4" controls muted loop></video>
+                <video src="/static/video2.mp4" autoplay muted loop playsinline class="preview-clip"></video>
             </div>
             <div class="showcase-box">
-                <video src="/static/video3.mp4" controls muted loop></video>
+                <video src="/static/video3.mp4" autoplay muted loop playsinline class="preview-clip"></video>
             </div>
         </div>
         
@@ -556,7 +562,30 @@
     <script>
         let allUserVideos = [];
         let currentPage = 0;
-        const videosPerPage = 4;
+
+        // Clip preview duration (in seconds)
+        const CLIP_DURATION = 10;
+
+        // Setup video clip looping
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.preview-clip').forEach(video => {
+                video.addEventListener('timeupdate', function() {
+                    if (this.currentTime >= CLIP_DURATION) {
+                        this.currentTime = 0;
+                        this.play();
+                    }
+                });
+                
+                // Ensure video plays
+                video.play().catch(err => console.log('Autoplay prevented:', err));
+            });
+        });
+
+        // Get videos per page based on screen size
+        function getVideosPerPage() {
+            // Show 4 user videos in addition to 4 static (8 total on desktop, 4 total mobile)
+            return window.innerWidth <= 768 ? 0 : 4;
+        }
 
         // Load showcase videos dynamically
         async function loadShowcaseVideos() {
@@ -564,10 +593,9 @@
                 const response = await fetch('/api/showcase');
                 allUserVideos = await response.json();
                 
-                if (allUserVideos.length > 0) {
-                    renderShowcasePage();
-                    updatePaginationButtons();
-                }
+                // Always render, even if no user videos (for pagination setup)
+                renderShowcasePage();
+                updatePaginationButtons();
             } catch (error) {
                 console.log('No user showcase videos yet');
             }
@@ -575,25 +603,40 @@
 
         function renderShowcasePage() {
             const grid = document.getElementById('showcaseGrid');
-            // Remove only user-generated videos (keep first 4 default videos)
-            const boxes = grid.querySelectorAll('.showcase-box');
-            boxes.forEach((box, index) => {
-                if (index >= 4) box.remove();
-            });
+            
+            // Remove previously added user videos
+            const userVideos = grid.querySelectorAll('.user-video');
+            userVideos.forEach(v => v.remove());
 
             // Add current page of user videos
+            const videosPerPage = getVideosPerPage();
             const start = currentPage * videosPerPage;
             const end = start + videosPerPage;
             const pageVideos = allUserVideos.slice(start, end);
 
             pageVideos.forEach(video => {
                 const box = document.createElement('div');
-                box.className = 'showcase-box';
+                box.className = 'showcase-box user-video';
                 const videoEl = document.createElement('video');
                 videoEl.src = `/static/showcase/${video.filename}`;
-                videoEl.controls = true;
+                videoEl.className = 'preview-clip';
+                videoEl.autoplay = true;
                 videoEl.muted = true;
                 videoEl.loop = true;
+                videoEl.preload = 'metadata';
+                videoEl.setAttribute('playsinline', '');
+                
+                // Add clip looping for user videos
+                videoEl.addEventListener('timeupdate', function() {
+                    if (this.currentTime >= CLIP_DURATION) {
+                        this.currentTime = 0;
+                        this.play();
+                    }
+                });
+                
+                // Auto-play
+                videoEl.play().catch(err => console.log('Autoplay prevented:', err));
+                
                 box.appendChild(videoEl);
                 grid.appendChild(box);
             });
@@ -604,6 +647,7 @@
             const nextBtn = document.getElementById('nextBtn');
             const pageInfo = document.getElementById('pageInfo');
 
+            const videosPerPage = getVideosPerPage();
             const totalPages = Math.ceil(allUserVideos.length / videosPerPage);
             
             prevBtn.disabled = currentPage === 0;
@@ -615,6 +659,7 @@
         }
 
         function nextPage() {
+            const videosPerPage = getVideosPerPage();
             const totalPages = Math.ceil(allUserVideos.length / videosPerPage);
             if (currentPage < totalPages - 1) {
                 currentPage++;
@@ -630,6 +675,17 @@
                 updatePaginationButtons();
             }
         }
+
+        // Reload on window resize to adjust videos per page
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                currentPage = 0;
+                renderShowcasePage();
+                updatePaginationButtons();
+            }, 250);
+        });
         
         loadShowcaseVideos();
     </script>

@@ -109,19 +109,75 @@ def render_combo_video(platform="tiktok"):
     avg_video_duration = sum(video_durations) / len(video_durations) if video_durations else target_segment_duration
     segment_duration = target_segment_duration  # Images will be this long
     
-    # Calculate how many segments we need: videos at their natural length + images at segment_duration
-    # Pattern: V-I-V-I-V-I... try to fill audio_duration
-    num_videos = min(len(available_videos), 3)  # Use up to 3 videos
-    num_images = 3  # Use 3 images to fill remaining time
+    # Calculate how many segments we need to fill the audio duration
+    # Pattern: V-I-V-I-V-I... alternate to fill audio_duration
+    # Each video uses its natural length, each image uses segment_duration
     
-    # Verify we have enough content
-    if num_videos < 2:
-        num_videos = min(len(available_videos), 2)
-        num_images = 4
+    # Start with what we have available
+    max_videos_to_use = min(len(available_videos), 25)  # Use all videos up to 25
+    max_images_to_use = min(len(available_images), 30)  # Use all images up to 30
     
-    # Get video and image files based on calculated needs
-    video_files = available_videos[:num_videos]
-    image_files = available_images[:num_images]
+    # Calculate expected total time if we use all available media once
+    expected_video_time = sum(video_durations[:max_videos_to_use]) if video_durations else (max_videos_to_use * avg_video_duration)
+    expected_image_time = max_images_to_use * segment_duration
+    expected_total = expected_video_time + expected_image_time
+    
+    # Determine how many media files we actually need
+    if expected_total >= audio_duration:
+        # We have enough content - just trim to fit
+        ratio = audio_duration / expected_total
+        num_videos = max(2, int(max_videos_to_use * ratio))
+        num_images = max(2, int(max_images_to_use * ratio))
+        video_files = available_videos[:num_videos]
+        image_files = available_images[:num_images]
+    else:
+        # Not enough content - we'll need to loop/repeat media files
+        print(f"   ⚠️ Only {expected_total:.1f}s of content for {audio_duration:.1f}s audio")
+        print(f"   🔄 Will loop media files to fill duration")
+        
+        # Use all available media and calculate how many times to repeat
+        base_video_files = list(available_videos[:max_videos_to_use])
+        base_image_files = list(available_images[:max_images_to_use])
+        
+        # Calculate how many loops we need
+        if expected_total > 0:
+            loops_needed = int(audio_duration / expected_total) + 1
+        else:
+            loops_needed = 2
+        
+        # Repeat the media files to fill the duration
+        video_files = base_video_files * loops_needed
+        image_files = base_image_files * loops_needed
+        
+        # Trim to approximately match audio duration
+        # Alternate V-I-V-I pattern and stop when we exceed audio duration
+        estimated_time = 0
+        final_video_files = []
+        final_image_files = []
+        v_idx = 0
+        i_idx = 0
+        
+        while estimated_time < audio_duration and (v_idx < len(video_files) or i_idx < len(image_files)):
+            # Add video
+            if v_idx < len(video_files):
+                final_video_files.append(video_files[v_idx])
+                vid_dur = video_durations[v_idx % len(video_durations)] if video_durations else avg_video_duration
+                estimated_time += vid_dur
+                v_idx += 1
+            
+            if estimated_time >= audio_duration:
+                break
+                
+            # Add image
+            if i_idx < len(image_files):
+                final_image_files.append(image_files[i_idx])
+                estimated_time += segment_duration
+                i_idx += 1
+        
+        video_files = final_video_files
+        image_files = final_image_files
+        num_videos = len(video_files)
+        num_images = len(image_files)
     
     if not video_files and not image_files:
         print(f" No videos or images found")
@@ -175,17 +231,15 @@ def render_combo_video(platform="tiktok"):
                 f"trim=duration={segment_duration},setpts=PTS-STARTPTS[v{idx}];"
             )
         else:
-            # Process video - loop to ensure it covers duration, then normalize timestamps for concat
+            # Process video - use natural duration, just normalize format for concat
             filter_parts.append(
                 f"[{idx}:v]scale={video_width}:{video_height}:"
                 f"force_original_aspect_ratio=decrease,"
                 f"pad={video_width}:{video_height}:(ow-iw)/2:(oh-ih)/2:black,"
-                f"setsar=1,fps=30,"
-                f"loop=loop=-1:size=1:start=0,"
-                f"trim=duration={segment_duration},setpts=PTS-STARTPTS[v{idx}];"
+                f"setsar=1,fps=30,setpts=PTS-STARTPTS[v{idx}];"
             )
     
-    # Concatenate all media
+    # Concatenate all media clips
     concat_input = "".join([f"[v{i}]" for i in range(len(all_media))])
     filter_parts.append(f"{concat_input}concat=n={len(all_media)}:v=1:a=0[base];")
     
@@ -208,6 +262,7 @@ def render_combo_video(platform="tiktok"):
     
     # FFmpeg command
     ffmpeg = find_ffmpeg()
+    temp_output = BASE_DIR / "output" / "temp_video.mp4"
     cmd = [
         ffmpeg, "-y", "-nostdin",
         *inputs,
@@ -217,14 +272,67 @@ def render_combo_video(platform="tiktok"):
         "-c:v", "libx264", "-preset", "medium", "-crf", "23",
         "-c:a", "aac", "-b:a", "128k",
         "-shortest",  # Stop when shortest stream (audio) ends
-        str(output_file)
+        str(temp_output)
     ]
     
     try:
         subprocess.run(cmd, check=True)
-        print(f" Combo video created: {output_file}")
-        print(f"    Videos +  Images +  Logo +  Captions")
         filter_file.unlink()
+        
+        # Check if end card is enabled
+        config = load_config()
+        end_card_enabled = config.get("branding", {}).get("end_card", {}).get("enabled", True)
+        end_card_path = BASE_DIR / config.get("branding", {}).get("end_card", {}).get("image_path", "images/echo_endcard.png")
+        end_card_duration = config.get("branding", {}).get("end_card", {}).get("duration", 3)
+        
+        if end_card_enabled and end_card_path.exists():
+            print(f" Adding {end_card_duration}s end card...")
+            
+            # Create end card video segment
+            end_card_cmd = [
+                ffmpeg, "-y", "-nostdin",
+                "-loop", "1",
+                "-i", str(end_card_path.absolute()),
+                "-t", str(end_card_duration),
+                "-vf", f"scale={video_width}:{video_height}:force_original_aspect_ratio=decrease,pad={video_width}:{video_height}:(ow-iw)/2:(oh-ih)/2:black",
+                "-c:v", "libx264",
+                "-preset", "medium",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                str(BASE_DIR / "output" / "temp_endcard.mp4")
+            ]
+            subprocess.run(end_card_cmd, check=True)
+            
+            # Concatenate main video with end card
+            concat_list = BASE_DIR / "output" / "concat_list.txt"
+            with open(concat_list, "w") as f:
+                f.write(f"file 'temp_video.mp4'\n")
+                f.write(f"file 'temp_endcard.mp4'\n")
+            
+            concat_cmd = [
+                ffmpeg, "-y", "-nostdin",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(concat_list),
+                "-c", "copy",
+                str(output_file)
+            ]
+            subprocess.run(concat_cmd, check=True)
+            
+            # Cleanup temporary files
+            temp_output.unlink(missing_ok=True)
+            (BASE_DIR / "output" / "temp_endcard.mp4").unlink(missing_ok=True)
+            concat_list.unlink(missing_ok=True)
+            
+            print(f" Combo video created with end card: {output_file}")
+        else:
+            # No end card - just rename temp file to final (replace if exists)
+            if output_file.exists():
+                output_file.unlink()
+            temp_output.rename(output_file)
+            print(f" Combo video created: {output_file}")
+        
+        print(f"    Videos +  Images +  Logo +  Captions")
         return True
     except subprocess.CalledProcessError as e:
         print(f" FFmpeg error: {e}")

@@ -83,19 +83,12 @@ def main():
     if not ASS_FILE.exists():
         raise FileNotFoundError(f"Captions not found: {ASS_FILE}")
 
-    # Get list of images
-    images = sorted(IMG_DIR.glob("img_*.jpg"))
+    # Get list of images (support jpg, jpeg, png)
+    images = sorted(IMG_DIR.glob("img_*.[jp][pn][g]*"))
     if not images:
         raise FileNotFoundError(f"No images found in {IMG_DIR}")
 
     print(f" Found {len(images)} images")
-
-    # Get audio duration
-    audio_duration = get_audio_duration(AUDIO)
-    duration_per_image = audio_duration / len(images)
-    
-    print(f" Audio duration: {audio_duration:.2f}s")
-    print(f"  Each image will show for {duration_per_image:.2f}s")
 
     # Change to output directory so ffmpeg can find relative files
     import os
@@ -108,6 +101,34 @@ def main():
         config_path = job_config_path
     else:
         config_path = BASE_DIR / "config" / "settings.yaml"
+    
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+    
+    # Get target duration - prefer config setting, fallback to audio duration
+    config_duration = config.get("video", {}).get("duration_seconds", None)
+    
+    if config_duration and AUDIO.exists():
+        audio_duration = get_audio_duration(AUDIO)
+        # Use whichever is longer to ensure full coverage
+        target_duration = max(config_duration, audio_duration)
+        print(f" Config duration: {config_duration}s, Audio duration: {audio_duration:.2f}s")
+        print(f" Using target duration: {target_duration:.2f}s")
+    elif config_duration:
+        # No audio (skip AI mode), use config duration
+        target_duration = config_duration
+        print(f" No audio - using config duration: {target_duration}s")
+    elif AUDIO.exists():
+        # Fallback to audio duration
+        target_duration = get_audio_duration(AUDIO)
+        print(f" Using audio duration: {target_duration:.2f}s")
+    else:
+        # Last resort
+        target_duration = 30
+        print(f" No audio or config - using default 30s")
+    
+    duration_per_image = target_duration / len(images)
+    print(f"  Each image will show for {duration_per_image:.2f}s")
     
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
@@ -205,27 +226,92 @@ def main():
     for img in images:
         cmd.extend(["-i", str(img.absolute())])
     
-    # Add audio input
-    cmd.extend(["-i", "voice.wav"])
+    # Add audio input if it exists
+    if AUDIO.exists():
+        cmd.extend(["-i", "voice.wav"])
+        audio_index = len(images)
+    else:
+        audio_index = None
     
     # Add filters and output options
     cmd.extend([
         "-filter_complex", full_filter,
         "-map", "[v]",
-        "-map", f"{len(images)}:a",  # audio is the last input
+    ])
+    
+    if audio_index is not None:
+        cmd.extend(["-map", f"{audio_index}:a"])  # audio is the last input
+    
+    cmd.extend([
         "-c:v", "libx264",
         "-preset", "medium",
         "-crf", "23",
         "-pix_fmt", "yuv420p",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-t", str(audio_duration),  # Force video to match audio duration
-        "final.mp4"
+    ])
+    
+    if audio_index is not None:
+        cmd.extend(["-c:a", "aac", "-b:a", "128k"])
+    
+    cmd.extend([
+        "-t", str(target_duration),  # Force video to match target duration
+        "temp_video.mp4"
     ])
 
     subprocess.run(cmd, check=True)
 
-    print(f" Final TikTok video created with {len(images)} image slideshow")
+    # Check if end card is enabled
+    end_card_enabled = config.get("branding", {}).get("end_card", {}).get("enabled", True)
+    end_card_path = BASE_DIR / config.get("branding", {}).get("end_card", {}).get("image_path", "images/echo_endcard.png")
+    end_card_duration = config.get("branding", {}).get("end_card", {}).get("duration", 3)
+    
+    if end_card_enabled and end_card_path.exists():
+        print(f" Adding {end_card_duration}s end card...")
+        
+        # Create end card video segment
+        end_card_cmd = [
+            ffmpeg, "-y", "-nostdin",
+            "-loop", "1",
+            "-i", str(end_card_path.absolute()),
+            "-t", str(end_card_duration),
+            "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "23",
+            "-pix_fmt", "yuv420p",
+            "temp_endcard.mp4"
+        ]
+        subprocess.run(end_card_cmd, check=True)
+        
+        # Concatenate main video with end card
+        # Create concat list file
+        with open("concat_list.txt", "w") as f:
+            f.write("file 'temp_video.mp4'\n")
+            f.write("file 'temp_endcard.mp4'\n")
+        
+        concat_cmd = [
+            ffmpeg, "-y", "-nostdin",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", "concat_list.txt",
+            "-c", "copy",
+            "final.mp4"
+        ]
+        subprocess.run(concat_cmd, check=True)
+        
+        # Cleanup temporary files
+        Path("temp_video.mp4").unlink(missing_ok=True)
+        Path("temp_endcard.mp4").unlink(missing_ok=True)
+        Path("concat_list.txt").unlink(missing_ok=True)
+        
+        print(f" Final video created with end card")
+    else:
+        # No end card - just rename temp file to final (replace if exists)
+        temp_file = Path("temp_video.mp4")
+        final_file = Path("final.mp4")
+        if final_file.exists():
+            final_file.unlink()
+        temp_file.rename(final_file)
+        print(f" Final TikTok video created with {len(images)} image slideshow")
 
 
 if __name__ == "__main__":

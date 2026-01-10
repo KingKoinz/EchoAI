@@ -108,11 +108,29 @@ def main():
 
     print(f" Found {len(videos)} video clips")
 
-    # Get audio duration
-    audio_duration = get_audio_duration(AUDIO)
-    duration_per_video = audio_duration / len(videos)
+    # Get target duration - prefer config setting, fallback to audio duration
+    config_duration = config.get("video", {}).get("duration_seconds", None)
     
-    print(f" Audio duration: {audio_duration:.2f}s")
+    if config_duration and AUDIO.exists():
+        audio_duration = get_audio_duration(AUDIO)
+        # Use whichever is longer to ensure full coverage
+        target_duration = max(config_duration, audio_duration)
+        print(f" Config duration: {config_duration}s, Audio duration: {audio_duration:.2f}s")
+        print(f" Using target duration: {target_duration:.2f}s")
+    elif config_duration:
+        # No audio (skip AI mode), use config duration
+        target_duration = config_duration
+        print(f" No audio - using config duration: {target_duration}s")
+    elif AUDIO.exists():
+        # Fallback to audio duration
+        target_duration = get_audio_duration(AUDIO)
+        print(f" Using audio duration: {target_duration:.2f}s")
+    else:
+        # Last resort
+        target_duration = 30
+        print(f" No audio or config - using default 30s")
+    
+    duration_per_video = target_duration / len(videos)
     print(f"  Each video clip will show for {duration_per_video:.2f}s")
 
     # Change to output directory so ffmpeg can find relative files
@@ -124,20 +142,20 @@ def main():
     total_video_duration = 0
     
     for i, vid in enumerate(videos):
-        # Loop video to ensure it covers the required duration, then trim
-        # This ensures short videos repeat instead of ending early
+        # Scale, crop, set framerate, and trim to exact duration
+        # The trim will repeat the last frame if video is shorter than duration
         filter_parts.append(
             f"[{i}:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
             f"crop={width}:{height},setsar=1,fps=30,"
-            f"loop=loop=-1:size=1:start=0,"
-            f"trim=duration={duration_per_video},setpts=PTS-STARTPTS[v{i}]"
+            f"trim=0:{duration_per_video},setpts=PTS-STARTPTS,"
+            f"tpad=stop_mode=clone:stop_duration={duration_per_video}[v{i}]"
         )
         total_video_duration += duration_per_video
     
     # Check if we need to add a black screen to cover remaining audio
-    remaining_time = audio_duration - total_video_duration
+    remaining_time = target_duration - total_video_duration
     if remaining_time > 0.5:  # Add black screen if more than 0.5s remaining
-        print(f" Adding {remaining_time:.2f}s black screen to cover remaining audio")
+        print(f" Adding {remaining_time:.2f}s black screen to cover remaining time")
         # Create a black screen segment
         filter_parts.append(
             f"color=black:s={width}x{height}:d={remaining_time}:r=30[vblack]"
@@ -167,27 +185,89 @@ def main():
     for vid in videos:
         cmd.extend(["-i", str(vid.absolute())])
     
-    # Add audio input
-    cmd.extend(["-i", str(AUDIO.absolute())])
+    # Add audio input if it exists
+    if AUDIO.exists():
+        cmd.extend(["-i", str(AUDIO.absolute())])
+        audio_index = len(videos)
+    else:
+        audio_index = None
     
     # Add filters and output options
     cmd.extend([
         "-filter_complex", full_filter,
         "-map", "[v]",
-        "-map", f"{len(videos)}:a",
+    ])
+    
+    if audio_index is not None:
+        cmd.extend(["-map", f"{audio_index}:a"])
+    
+    cmd.extend([
         "-c:v", "libx264",
         "-preset", "medium",
         "-crf", "23",
         "-pix_fmt", "yuv420p",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-t", str(audio_duration),
-        "final.mp4"
     ])
+    
+    if audio_index is not None:
+        cmd.extend(["-c:a", "aac", "-b:a", "128k"])
+    
+    cmd.extend(["-t", str(target_duration), "temp_video.mp4"])
 
     subprocess.run(cmd, check=True)
 
-    print(f" Final TikTok video created with {len(videos)} video clips + black screen fill")
+    # Check if end card is enabled
+    config = load_config()
+    end_card_enabled = config.get("branding", {}).get("end_card", {}).get("enabled", True)
+    end_card_path = BASE_DIR / config.get("branding", {}).get("end_card", {}).get("image_path", "images/echo_endcard.png")
+    end_card_duration = config.get("branding", {}).get("end_card", {}).get("duration", 3)
+    
+    if end_card_enabled and end_card_path.exists():
+        print(f" Adding {end_card_duration}s end card...")
+        
+        # Create end card video segment
+        end_card_cmd = [
+            ffmpeg, "-y", "-nostdin",
+            "-loop", "1",
+            "-i", str(end_card_path.absolute()),
+            "-t", str(end_card_duration),
+            "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "23",
+            "-pix_fmt", "yuv420p",
+            "temp_endcard.mp4"
+        ]
+        subprocess.run(end_card_cmd, check=True)
+        
+        # Concatenate main video with end card
+        with open("concat_list.txt", "w") as f:
+            f.write("file 'temp_video.mp4'\n")
+            f.write("file 'temp_endcard.mp4'\n")
+        
+        concat_cmd = [
+            ffmpeg, "-y", "-nostdin",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", "concat_list.txt",
+            "-c", "copy",
+            "final.mp4"
+        ]
+        subprocess.run(concat_cmd, check=True)
+        
+        # Cleanup temporary files
+        Path("temp_video.mp4").unlink(missing_ok=True)
+        Path("temp_endcard.mp4").unlink(missing_ok=True)
+        Path("concat_list.txt").unlink(missing_ok=True)
+        
+        print(f" Final video created with end card")
+    else:
+        # No end card - just rename temp file to final (replace if exists)
+        temp_file = Path("temp_video.mp4")
+        final_file = Path("final.mp4")
+        if final_file.exists():
+            final_file.unlink()
+        temp_file.rename(final_file)
+        print(f" Final TikTok video created with {len(videos)} video clips + black screen fill")
 
 
 if __name__ == "__main__":

@@ -98,11 +98,11 @@ def load_config():
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-def run_pipeline_async(job_id, topic, platform, style, voice, duration, transition, caption_style, content_type, logo_option):
+def run_pipeline_async(job_id, topic, platform, style, voice, duration, transition, caption_style, content_type, logo_option, end_card_option, audio_source, skip_ai=False):
     """Run video generation pipeline in background"""
     try:
         JOBS[job_id]["status"] = "processing"
-        JOBS[job_id]["stage"] = "Generating script..."
+        JOBS[job_id]["stage"] = "Generating script..." if not skip_ai else "Preparing media..."
         
         job_dir = JOBS_DIR / job_id
         job_dir.mkdir(exist_ok=True)
@@ -114,6 +114,7 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         config["video"]["voice"] = voice
         config["video"]["transition"]["type"] = transition
         config["video"]["caption_style"] = caption_style
+        config["video"]["render_mode"] = content_type
         
         # Update branding config
         if logo_option == "default":
@@ -123,6 +124,12 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             config["branding"]["logo"]["image_path"] = JOBS[job_id]["logo_path"]
         elif logo_option == "none":
             config["branding"]["logo"]["enabled"] = False
+        
+        # Update end card config
+        if end_card_option == "enabled":
+            config["branding"]["end_card"]["enabled"] = True
+        else:
+            config["branding"]["end_card"]["enabled"] = False
         
         # Save job-specific config
         job_config = job_dir / "settings.yaml"
@@ -137,36 +144,46 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         output_config = output_dir / "settings.yaml"
         shutil.copy(job_config, output_config)
         
-        # Stage 1: Generate script
-        JOBS[job_id]["stage"] = "Creating script..."
-        JOBS[job_id]["progress"] = 20
-        
-        cmd = [sys.executable, str(scripts_dir / "make_script.py"), topic]
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
-        print(f"✅ Script generated: {len(result.stdout)} chars")
-        
-        # Stage 2: Generate voice
-        JOBS[job_id]["stage"] = "Synthesizing voice..."
-        JOBS[job_id]["progress"] = 40
-        cmd = [sys.executable, str(scripts_dir / "make_voice.py")]
-        subprocess.run(cmd, check=True, capture_output=True)
-        
-        # Stage 3: Generate captions based on selected style
-        JOBS[job_id]["stage"] = "Creating captions..."
-        JOBS[job_id]["progress"] = 55
-        
-        if caption_style == "bounce":
-            caption_script = "make_captions_bounce.py"
-        elif caption_style == "color_box":
-            caption_script = "make_captions_color_box.py"
-        elif caption_style == "karaoke":
-            caption_script = "make_captions_karaoke.py"
+        # Stage 1: Generate script (skip if skip_ai is True)
+        if not skip_ai:
+            JOBS[job_id]["stage"] = "Creating script..."
+            JOBS[job_id]["progress"] = 20
+            
+            cmd = [sys.executable, str(scripts_dir / "make_script.py"), topic]
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+            print(f"✅ Script generated: {len(result.stdout)} chars")
         else:
-            caption_script = "make_captions_bounce.py"  # Default
+            # Skip AI - just use existing script.txt or create dummy
+            JOBS[job_id]["stage"] = "Skipping AI generation..."
+            JOBS[job_id]["progress"] = 20
         
-        if caption_style != "none":
+        # Stage 2: Generate voice (skip if skip_ai is True)
+        if not skip_ai:
+            JOBS[job_id]["stage"] = "Synthesizing voice..."
+            JOBS[job_id]["progress"] = 40
+            cmd = [sys.executable, str(scripts_dir / "make_voice.py")]
+            subprocess.run(cmd, check=True, capture_output=True)
+        else:
+            JOBS[job_id]["progress"] = 40
+        
+        # Stage 3: Generate captions based on selected style (skip if skip_ai is True and caption_style is none)
+        if not skip_ai and caption_style != "none":
+            JOBS[job_id]["stage"] = "Creating captions..."
+            JOBS[job_id]["progress"] = 55
+            
+            if caption_style == "bounce":
+                caption_script = "make_captions_bounce.py"
+            elif caption_style == "color_box":
+                caption_script = "make_captions_color_box.py"
+            elif caption_style == "karaoke":
+                caption_script = "make_captions_karaoke.py"
+            else:
+                caption_script = "make_captions_bounce.py"  # Default
+            
             cmd = [sys.executable, str(scripts_dir / caption_script)]
             subprocess.run(cmd, check=True, capture_output=True)
+        else:
+            JOBS[job_id]["progress"] = 55
         
         # Stage 4: Fetch or handle content based on type
         JOBS[job_id]["stage"] = "Collecting content..."
@@ -181,6 +198,8 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             images_dir = BASE_DIR / "images"
             images_dir.mkdir(exist_ok=True)
             
+            print(f"✅ Copying {len(uploaded_images)} uploaded images to {images_dir}")
+            
             # Clear existing images
             for img in images_dir.glob("img_*.*"):
                 img.unlink()
@@ -190,6 +209,7 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
                 src = Path(src_path)
                 dst = images_dir / f"img_{idx+1:02d}{src.suffix}"
                 shutil.copy(src, dst)
+                print(f"  ✓ Copied {src.name} → {dst.name}")
             
         if uploaded_videos:
             # Copy uploaded videos to videos/ directory
@@ -207,18 +227,41 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
                 shutil.copy(src, dst)
         
         # Auto-download if no uploads provided
-        if not uploaded_images and content_type in ["images", "combo", "upload_both"]:
+        if not uploaded_images and content_type in ["images", "combo"]:
+            # Clear old images before downloading new ones
+            images_dir = BASE_DIR / "images"
+            images_dir.mkdir(exist_ok=True)
+            for img in images_dir.glob("img_*.*"):
+                img.unlink()
+            
+            print(f"🔍 Auto-downloading images (no uploads, content_type={content_type})")
             # Auto-download images
             cmd = [sys.executable, str(scripts_dir / "make_images.py")]
             subprocess.run(cmd, check=True, capture_output=True)
+        elif uploaded_images:
+            print(f"✅ Using {len(uploaded_images)} uploaded images (skipping auto-download)")
         
-        if not uploaded_videos and content_type in ["videos", "combo", "upload_both"]:
+        if not uploaded_videos and content_type in ["videos", "combo"]:
+            # Clear old videos before downloading new ones
+            videos_dir = BASE_DIR / "videos"
+            videos_dir.mkdir(exist_ok=True)
+            for vid in videos_dir.glob("video_*.mp4"):
+                vid.unlink()
+            
+            print(f"🔍 Auto-downloading videos (no uploads, content_type={content_type})")
             # Video fetching (if implemented)
             cmd = [sys.executable, str(scripts_dir / "make_videos.py")]
             try:
-                subprocess.run(cmd, check=True, capture_output=True)
-            except:
-                pass  # Fallback to images if video script doesn't exist
+                result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+                print(f"make_videos.py output: {result.stdout}")
+            except subprocess.CalledProcessError as e:
+                print(f"ERROR: make_videos.py failed with code {e.returncode}")
+                print(f"STDOUT: {e.stdout}")
+                print(f"STDERR: {e.stderr}")
+            except Exception as e:
+                print(f"ERROR: make_videos.py exception: {e}")
+        elif uploaded_videos:
+            print(f"✅ Using {len(uploaded_videos)} uploaded videos (skipping auto-download)")
         
         # Stage 5: Render video based on content type
         JOBS[job_id]["stage"] = "Rendering video..."
@@ -241,6 +284,44 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         
         if final_video.exists():
             shutil.copy(final_video, job_video)
+            
+            # Add custom audio if provided
+            audio_source = JOBS[job_id].get("audio_source", "none")
+            audio_path = JOBS[job_id].get("audio_path")
+            
+            if audio_source != "none" and audio_path and Path(audio_path).exists():
+                print(f" Adding custom audio layer ({audio_source})...")
+                JOBS[job_id]["stage"] = "Adding custom audio..."
+                JOBS[job_id]["progress"] = 95
+                
+                temp_video = job_dir / "temp_with_audio.mp4"
+                
+                if audio_source == "replace":
+                    # Replace audio completely
+                    cmd = [
+                        sys.executable, "-c",
+                        f"import subprocess; subprocess.run(['ffmpeg', '-y', '-i', '{job_video}', '-i', '{audio_path}', '-c:v', 'copy', '-map', '0:v', '-map', '1:a', '-shortest', '{temp_video}'], check=True)"
+                    ]
+                else:
+                    # Mix audio
+                    weights = {
+                        'mix_quiet': '1 0.2',
+                        'mix_medium': '1 0.5',
+                        'mix_loud': '1 0.8'
+                    }
+                    weight = weights.get(audio_source, '1 0.5')
+                    
+                    cmd = [
+                        sys.executable, "-c",
+                        f"import subprocess; subprocess.run(['ffmpeg', '-y', '-i', '{job_video}', '-i', '{audio_path}', '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first:weights={weight}[a]', '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '{temp_video}'], check=True)"
+                    ]
+                
+                try:
+                    subprocess.run(cmd, check=True, capture_output=True, shell=True)
+                    shutil.move(str(temp_video), str(job_video))
+                    print(f" Custom audio added successfully")
+                except Exception as e:
+                    print(f" Warning: Failed to add custom audio: {e}")
             
             # Add to showcase
             add_to_showcase(job_video, job_id)
@@ -317,10 +398,13 @@ def generate_video():
         duration = int(data.get("duration", 25))
         transition = data.get("transition", "fade")
         logo_option = data.get("logo_option", "none")
+        end_card_option = data.get("end_card_option", "enabled")
         caption_style = data.get("caption_style", "bounce")
         content_type = data.get("content_type", "images")
+        audio_source = data.get("audio_source", "none")
+        skip_ai = data.get("skip_ai", "false").lower() == "true"
         
-        if not topic:
+        if not topic and not skip_ai:
             return jsonify({"error": "Topic is required"}), 400
         
         # Calculate reasonable limits based on duration
@@ -350,6 +434,16 @@ def generate_video():
             if file_ext in allowed_extensions:
                 uploaded_logo_path = job_dir / f"logo{file_ext}"
                 logo_file.save(str(uploaded_logo_path))
+        
+        # Handle custom audio file
+        uploaded_audio_path = None
+        custom_audio_file = request.files.get('custom_audio_file')
+        if custom_audio_file and audio_source != 'none':
+            allowed_audio_ext = {'.mp3', '.wav'}
+            file_ext = Path(custom_audio_file.filename).suffix.lower()
+            if file_ext in allowed_audio_ext:
+                uploaded_audio_path = job_dir / f"custom_audio{file_ext}"
+                custom_audio_file.save(str(uploaded_audio_path))
         
         # Handle uploaded content files (images or videos)
         uploaded_image_paths = []
@@ -412,6 +506,8 @@ def generate_video():
             "content_type": content_type,
             "image_paths": uploaded_image_paths,
             "video_paths": uploaded_video_paths,
+            "audio_source": audio_source,
+            "audio_path": str(uploaded_audio_path) if uploaded_audio_path else None,
             "status": "queued",
             "stage": "Initializing...",
             "progress": 0,
@@ -421,7 +517,7 @@ def generate_video():
         # Start processing in background thread
         thread = threading.Thread(
             target=run_pipeline_async,
-            args=(job_id, topic, platform, style, voice, duration, transition, caption_style, content_type, logo_option)
+            args=(job_id, topic, platform, style, voice, duration, transition, caption_style, content_type, logo_option, end_card_option, audio_source, skip_ai)
         )
         thread.daemon = True
         thread.start()
@@ -484,6 +580,39 @@ def stream_video(job_id):
         as_attachment=False  # Stream for preview, not download
     )
 
+@app.route("/api/fetch-stories", methods=["GET"])
+def fetch_stories():
+    """Fetch trending stories from various sources"""
+    category = request.args.get("category", "mystery")
+    limit = int(request.args.get("limit", 20))
+    
+    try:
+        # Import the fetch script
+        sys.path.insert(0, str(BASE_DIR / "scripts"))
+        from fetch_trending_stories import fetch_all_stories
+        
+        # Reduce limit to generate faster (5 stories instead of 20)
+        stories = fetch_all_stories(category, min(limit, 5))
+        return jsonify({"stories": stories, "count": len(stories)})
+        
+    except Exception as e:
+        print(f"❌ Error fetching stories: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Return fallback story if fetch fails
+        fallback = [{
+            "id": "fallback_1",
+            "title": "The Somerton Man - 75 Years Unsolved",
+            "content": "In 1948, an unidentified man was found dead on Somerton Beach...",
+            "full_content": "In 1948, an unidentified man was found dead on Somerton Beach in Australia. He was well-dressed, with no identification, and his dental records matched no one on file. In his pocket was a scrap of paper torn from a rare book of Persian poetry, with the words 'Tamám Shud' - meaning 'ended' or 'finished'. Despite decades of investigation, his identity and cause of death remain unsolved.",
+            "score": 5000,
+            "comments": 1200,
+            "subreddit": "AI Generated",
+            "category": category
+        }]
+        return jsonify({"stories": fallback, "count": len(fallback)})
+
 @app.route("/api/config", methods=["GET"])
 def get_config():
     """Get available options for frontend"""
@@ -499,7 +628,11 @@ def get_config():
             {"id": "viral_facts", "name": "Viral Facts", "desc": "Quick, engaging facts"},
             {"id": "story_time", "name": "Story Time", "desc": "Narrative storytelling"},
             {"id": "motivational", "name": "Motivational", "desc": "Inspiring content"},
-            {"id": "educational", "name": "Educational", "desc": "Teaching content"}
+            {"id": "educational", "name": "Educational", "desc": "Teaching content"},
+            {"id": "mystery_investigation", "name": "🕵️ Mystery Investigation", "desc": "Detective-style breakdown"},
+            {"id": "true_crime", "name": "🔍 True Crime", "desc": "Documentary narration"},
+            {"id": "creepy_story", "name": "👻 Creepy Storytelling", "desc": "Atmospheric horror"},
+            {"id": "conspiracy", "name": "🤔 Conspiracy Deep-Dive", "desc": "Analytical investigation"}
         ],
         "transitions": [
             {"id": "fade", "name": "Fade"},
@@ -510,7 +643,7 @@ def get_config():
             {"id": "circleopen", "name": "Circle Open"},
             {"id": "kenburns", "name": "Ken Burns (Zoom/Pan)"}
         ],
-        "durations": [15, 25, 30, 45, 60, 90]
+        "durations": [15, 25, 30, 45, 60, 90, 120, 180, 240, 300]
     })
 
 @app.route("/api/showcase", methods=["GET"])
@@ -519,6 +652,72 @@ def get_showcase():
     cleanup_old_showcase_videos()
     showcase = load_showcase()
     return jsonify(showcase)  # Return all videos
+
+@app.route("/api/add-audio/<job_id>", methods=["POST"])
+def add_audio_layer(job_id):
+    """Add audio layer to existing video"""
+    try:
+        audio_file = request.files.get('audio_file')
+        mode = request.form.get('mode', 'replace')
+        
+        if not audio_file:
+            return jsonify({"error": "No audio file provided"}), 400
+        
+        # Get job directory
+        job_dir = JOBS_DIR / job_id
+        if not job_dir.exists():
+            return jsonify({"error": "Job not found"}), 404
+        
+        video_path = job_dir / "video.mp4"
+        if not video_path.exists():
+            return jsonify({"error": "Video not found"}), 404
+        
+        # Save uploaded audio
+        audio_path = job_dir / "custom_audio.mp3"
+        audio_file.save(str(audio_path))
+        
+        # Process audio with FFmpeg
+        import subprocess
+        output_path = job_dir / "video_with_audio.mp4"
+        
+        if mode == 'replace':
+            # Replace audio completely
+            cmd = [
+                "ffmpeg", "-y", "-i", str(video_path), "-i", str(audio_path),
+                "-c:v", "copy", "-map", "0:v", "-map", "1:a",
+                "-shortest", str(output_path)
+            ]
+        else:
+            # Mix audio
+            weights = {
+                'mix_quiet': '1 0.2',
+                'mix_medium': '1 0.5',
+                'mix_loud': '1 0.8'
+            }
+            weight = weights.get(mode, '1 0.5')
+            
+            cmd = [
+                "ffmpeg", "-y", "-i", str(video_path), "-i", str(audio_path),
+                "-filter_complex", f"[0:a][1:a]amix=inputs=2:duration=first:weights={weight}[a]",
+                "-map", "0:v", "-map", "[a]",
+                "-c:v", "copy", "-c:a", "aac", "-shortest", str(output_path)
+            ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"FFmpeg error: {result.stderr}")
+            return jsonify({"error": "Audio processing failed"}), 500
+        
+        # Replace original video with new one
+        import shutil
+        shutil.move(str(output_path), str(video_path))
+        
+        return jsonify({"success": True, "message": "Audio added successfully"})
+        
+    except Exception as e:
+        print(f"Error adding audio: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     print("🚀 Starting EchoAI Web Server...")
