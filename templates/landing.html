@@ -271,14 +271,14 @@
         }
 
         .showcase-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            display: flex;
             gap: 15px;
             margin-top: 40px;
             overflow-x: auto;
             scroll-behavior: smooth;
             scrollbar-width: none;
             -ms-overflow-style: none;
+            padding-bottom: 10px;
         }
 
         .showcase-grid::-webkit-scrollbar {
@@ -286,6 +286,8 @@
         }
 
         .showcase-box {
+            min-width: 220px;
+            flex-shrink: 0;
             aspect-ratio: 9/16;
             border-radius: 20px;
             overflow: hidden;
@@ -546,10 +548,9 @@
                 transform: scale(1);
             }
             
-            /* Show showcase as 2 columns on mobile */
-            .showcase-grid {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 10px;
+            /* Smaller showcase boxes on mobile */
+            .showcase-box {
+                min-width: 150px;
             }
         }
     </style>
