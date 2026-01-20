@@ -271,23 +271,13 @@
         }
 
         .showcase-grid {
-            display: flex;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
             gap: 15px;
             margin-top: 40px;
-            overflow-x: auto;
-            scroll-behavior: smooth;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-            padding-bottom: 10px;
-        }
-
-        .showcase-grid::-webkit-scrollbar {
-            display: none;
         }
 
         .showcase-box {
-            min-width: 220px;
-            flex-shrink: 0;
             aspect-ratio: 9/16;
             border-radius: 20px;
             overflow: hidden;
@@ -548,9 +538,10 @@
                 transform: scale(1);
             }
             
-            /* Smaller showcase boxes on mobile */
-            .showcase-box {
-                min-width: 150px;
+            /* Show showcase as 2 columns on mobile */
+            .showcase-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
             }
         }
     </style>
@@ -628,13 +619,29 @@
     </section>
     
     <script>
-        // Scroll showcase gallery
+        // Scroll showcase gallery - rotate through videos in batches
+        let currentBatchIndex = 0;
+        
         function scrollShowcase(direction) {
-            const grid = document.getElementById('showcaseGrid');
-            const scrollAmount = 300;
-            grid.scrollBy({
-                left: direction * scrollAmount,
-                behavior: 'smooth'
+            if (playlist.length <= panelEls.length) return; // Not enough videos to scroll
+            
+            currentBatchIndex += direction;
+            if (currentBatchIndex < 0) {
+                currentBatchIndex = Math.floor((playlist.length - 1) / panelEls.length);
+            }
+            if (currentBatchIndex * panelEls.length >= playlist.length) {
+                currentBatchIndex = 0;
+            }
+            
+            // Load the current batch of videos
+            const startIdx = currentBatchIndex * panelEls.length;
+            panelEls.forEach((video, i) => {
+                const srcIdx = (startIdx + i) % playlist.length;
+                if (video.src !== playlist[srcIdx]) {
+                    video.src = playlist[srcIdx];
+                    video.load();
+                    video.play();
+                }
             });
         }
 
