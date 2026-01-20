@@ -185,7 +185,12 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         else:
             config["branding"]["end_card"]["enabled"] = False
         
-        # Update hook config
+        # Update hook config (ensure hook dict exists)
+        if "hook" not in config.get("video", {}):
+            if "video" not in config:
+                config["video"] = {}
+            config["video"]["hook"] = {"enabled": True}
+        
         if hook_option == "enabled":
             config["video"]["hook"]["enabled"] = True
         else:
@@ -229,7 +234,7 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             
             cmd = [sys.executable, str(scripts_dir / "make_script.py"), topic]
             result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=600)
-            print(f"✅ Script generated: {len(result.stdout)} chars")
+            print(f"[SUCCESS] Script generated: {len(result.stdout)} chars")
 
             # Read structured script for hook display on UI
             try:
@@ -245,7 +250,7 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
                     JOBS[job_id]["hook_options"] = []
                     JOBS[job_id]["timeline"] = []
             except Exception as hook_err:
-                print(f"⚠️ Failed to read script_struct.json: {hook_err}")
+                print(f"[WARNING] Failed to read script_struct.json: {hook_err}")
                 JOBS[job_id]["selected_hook"] = ""
                 JOBS[job_id]["hook_options"] = []
                 JOBS[job_id]["timeline"] = []
@@ -907,6 +912,6 @@ def add_audio_layer(job_id):
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    print("🚀 Starting EchoAI Web Server...")
-    print("📱 Open http://localhost:5000 in your browser")
+    print("[STARTING] EchoAI Web Server...")
+    print("[INFO] Open http://localhost:5000 in your browser")
     app.run(debug=True, host="0.0.0.0", port=5000)
