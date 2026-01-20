@@ -20,10 +20,10 @@ def main():
     else:
         # Use the requested fixed topic instead of auto-generating
         topic = "Things I Ignored Because She Was Cute"
-        print(f"\n🎯 Using fixed topic: {topic}\n")
+        print(f"\n[*] Using fixed topic: {topic}\n")
 
 
-    print(f"\n🧠 TOPIC: {topic}")
+    print(f"\n[TOPIC] {topic}")
 
     # ---- STEP 2: generate script ----
     # adjust filename if yours differs
@@ -32,17 +32,46 @@ def main():
     # ---- STEP 3: generate voice ----
     run("make_voice.py")
 
-    # ---- STEP 4: generate color-box captions ----
-    run("make_captions_color_box.py")
+    # Load caption style from config
+    import yaml
+    config_path = BASE_DIR / "config" / "settings.yaml"
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    # ---- STEP 3.5: render hook segment ----
+    platform = config.get("video", {}).get("platform", "tiktok")
+    run("make_video_hook.py", [platform])
+
+    # ---- STEP 4: generate captions based on config ----
+    
+    caption_style = config.get("video", {}).get("caption_style", "color_box")
+    
+    if caption_style == "bounce":
+        run("make_captions_bounce.py")
+    elif caption_style == "color_box":
+        run("make_captions_color_box.py")
+    elif caption_style == "karaoke":
+        run("make_captions_karaoke.py")
+    elif caption_style == "yellow_box":
+        run("make_captions_yellow_box.py")
+    elif caption_style == "white_box":
+        run("make_captions_white_box.py")
+    elif caption_style == "single_pop":
+        run("make_captions_single_pop.py")
+    else:
+        run("make_captions_color_box.py")  # Default
 
     # --- Step 5: generate topic-related images (used for slideshow) ----
     run("make_images.py")
 
-    # ---- STEP 6: render final video using image slideshow with motion ----
+    # ---- STEP 6: render body video using image slideshow with motion ----
     run("make_video_render.py")
 
-    print("\n✅ VIDEO PIPELINE COMPLETE")
-    print("📁 Check: output/final.mp4")
+    # ---- STEP 7: concatenate hook + body + endcard ----
+    run("make_video_concat.py", [platform])
+
+    print("\n[SUCCESS] VIDEO PIPELINE COMPLETE")
+    print("[OUTPUT] Check: output/final.mp4")
 
 if __name__ == "__main__":
     main()
