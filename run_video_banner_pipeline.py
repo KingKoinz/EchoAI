@@ -6,11 +6,32 @@ import subprocess
 import sys
 from pathlib import Path
 import time
+import yaml
 
 BASE_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = BASE_DIR / "scripts"
 
-def run_step(script_name, description):
+def load_config():
+    """Load configuration from settings.yaml"""
+    config_path = BASE_DIR / "config" / "settings.yaml"
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
+
+def get_caption_script(config):
+    """Get the appropriate caption script based on config"""
+    caption_style = config.get('video', {}).get('caption_style', 'bounce')
+    
+    style_map = {
+        'bounce': 'make_captions_bounce.py',
+        'color_box': 'make_captions_color_box.py',
+        'karaoke': 'make_captions_karaoke.py',
+        'yellow_box': 'make_captions.py',  # default yellow_box
+        'white_box': 'make_captions.py',   # fallback to default
+        'single_pop': 'make_captions.py',  # fallback to default
+        'none': None
+    }
+    
+    return style_map.get(caption_style, 'make_captions_bounce.py')
     """Run a pipeline step and report status"""
     print(f"\n{'='*60}")
     print(f"🚀 STEP: {description}")
@@ -59,19 +80,38 @@ def main():
     # Confirm to proceed
     response = input("Continue? (yes/no): ").strip().lower()
     if response not in ['yes', 'y']:
-        print("❌ Pipeline cancelled by user")
+        print("[CANCELLED] Pipeline cancelled by user")
         return
     
     start_time = time.time()
+    
+    # Load configuration
+    config = load_config()
+    
+    # Get platform from config
+    platform = config.get("video", {}).get("platform", "tiktok")
+    
+    # Get caption script based on config
+    caption_script = get_caption_script(config)
     
     # Pipeline steps
     steps = [
         ("make_script.py", "Generate AI Script"),
         ("make_voice.py", "Generate Voice Audio"),
-        ("make_captions_color_box.py", "Create Styled Captions (color-box)") ,
-        ("make_images.py", "Generate Images"),
-        ("make_video_render.py", "Render Video (image slideshow)"),
+        (f"make_video_hook.py {platform}", "Render Hook Segment"),
     ]
+    
+    # Add caption step if not none
+    if caption_script:
+        steps.append((caption_script, f"Create Styled Captions ({config.get('video', {}).get('caption_style', 'bounce')})"))
+    else:
+        print("⚠️  Caption generation disabled (caption_style: none)")
+    
+    steps.extend([
+        ("make_images.py", "Generate Images"),
+        ("make_video_render.py", "Render Body Video (image slideshow)"),
+        (f"make_video_concat.py {platform}", "Concatenate Hook + Body + Endcard"),
+    ])
     
     # Execute pipeline
     for script, description in steps:
@@ -113,8 +153,8 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n❌ Pipeline interrupted by user (Ctrl+C)")
+        print("\n\n[CANCELLED] Pipeline interrupted by user (Ctrl+C)")
     except Exception as e:
-        print(f"\n\n❌ Unexpected error: {e}")
+        print(f"\n\n[ERROR] Unexpected error: {e}")
         import traceback
         traceback.print_exc()

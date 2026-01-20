@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 import time
 import os
+import yaml
 
 BASE_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = BASE_DIR / "scripts"
@@ -16,10 +17,30 @@ FFMPEG_BIN = r"C:\Users\Walt\Downloads\ffmpeg\ffmpeg-master-latest-win64-gpl\bin
 if Path(FFMPEG_BIN).exists():
     os.environ["PATH"] = FFMPEG_BIN + os.pathsep + os.environ.get("PATH", "")
 
-def run_step(script_name, description):
+def load_config():
+    """Load configuration from settings.yaml"""
+    config_path = BASE_DIR / "config" / "settings.yaml"
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
+
+def get_caption_script(config):
+    """Get the appropriate caption script based on config"""
+    caption_style = config.get('video', {}).get('caption_style', 'bounce')
+    
+    style_map = {
+        'bounce': 'make_captions_bounce.py',
+        'color_box': 'make_captions_color_box.py',
+        'karaoke': 'make_captions_karaoke.py',
+        'yellow_box': 'make_captions.py',  # default yellow_box
+        'white_box': 'make_captions.py',   # fallback to default
+        'single_pop': 'make_captions.py',  # fallback to default
+        'none': None
+    }
+    
+    return style_map.get(caption_style, 'make_captions_bounce.py')
     """Run a pipeline step and report status"""
     print(f"\n{'='*60}")
-    print(f"🚀 STEP: {description}")
+    print(f"[STEP] {description}")
     print(f"{'='*60}")
     
     # Split script name and arguments
@@ -29,7 +50,7 @@ def run_step(script_name, description):
     
     script_path = SCRIPTS_DIR / script_file
     if not script_path.exists():
-        print(f"❌ Script not found: {script_path}")
+        print(f"[ERROR] Script not found: {script_path}")
         return False
     
     try:
@@ -44,10 +65,10 @@ def run_step(script_name, description):
             capture_output=False,
             text=True
         )
-        print(f"✅ {description} - COMPLETED")
+        print(f"[SUCCESS] {description} - COMPLETED")
         return True
     except subprocess.CalledProcessError as e:
-        print(f"❌ {description} - FAILED")
+        print(f"[ERROR] {description} - FAILED")
         print(f"Error: {e}")
         return False
 
@@ -66,7 +87,7 @@ def main():
     5. Download still images (Vecteezy/Pexels API)
     6. Render final combo video (videos + images with Ken Burns)
     
-    ⚠️  WARNING: This uses API credits!
+    [!] WARNING: This uses API credits!
     - Claude API: ~$0.01-0.05 per run
     - Eleven Labs: Character quota
     - Vecteezy: Dynamic downloads based on script length
@@ -79,33 +100,52 @@ def main():
     # Confirm to proceed
     response = input("Continue? (yes/no): ").strip().lower()
     if response not in ['yes', 'y']:
-        print("❌ Pipeline cancelled by user")
+        print("[CANCELLED] Pipeline cancelled by user")
         return
     
     start_time = time.time()
     
+    # Load configuration
+    config = load_config()
+    
     # Read topic from input/topics.txt
     topics_file = BASE_DIR / "input" / "topics.txt"
     if not topics_file.exists():
-        print("❌ input/topics.txt not found!")
+        print("[ERROR] input/topics.txt not found!")
         return
     
     topic = topics_file.read_text().strip()
     if not topic:
-        print("❌ input/topics.txt is empty!")
+        print("[ERROR] input/topics.txt is empty!")
         return
     
     print(f"\n📝 Topic: {topic}\n")
     
+    # Get caption script based on config
+    caption_script = get_caption_script(config)
+    
     # Pipeline steps
+    # Get platform from config
+    platform = config.get("video", {}).get("platform", "tiktok")
+    
     steps = [
         (f'make_script.py "{topic}"', "Generate AI Script"),
         ("make_voice.py", "Generate Voice Audio"),
-        ("make_captions.py", "Create Styled Captions"),
+        (f"make_video_hook.py {platform}", "Render Hook Segment"),
+    ]
+    
+    # Add caption step if not none
+    if caption_script:
+        steps.append((caption_script, "Create Styled Captions"))
+    else:
+        print("⚠️  Caption generation disabled (caption_style: none)")
+    
+    steps.extend([
         ("make_videos_vecteezy.py", "Download Video Clips"),
         ("make_images.py", "Download Still Images"),
-        ("make_video_render_combo.py", "Render Combo Video (Videos + Images)"),
-    ]
+        ("make_video_render_combo.py", "Render Body Video (Videos + Images)"),
+        (f"make_video_concat.py {platform}", "Concatenate Hook + Body + Endcard"),
+    ])
     
     # Execute pipeline
     for script, description in steps:
@@ -149,8 +189,8 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n❌ Pipeline interrupted by user (Ctrl+C)")
+        print("\n\n[CANCELLED] Pipeline interrupted by user (Ctrl+C)")
     except Exception as e:
-        print(f"\n\n❌ Unexpected error: {e}")
+        print(f"\n\n[ERROR] Unexpected error: {e}")
         import traceback
         traceback.print_exc()
