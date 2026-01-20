@@ -208,20 +208,48 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         if wait_message_set:
             JOBS[job_id]["stage"] = "Generating script..." if not skip_ai else "Preparing media..."
 
-        # Reset voice track unless we are intentionally reusing it in skip mode
-        output_voice = output_dir / "voice.wav"
-        if output_voice.exists():
-            output_voice.unlink()
-
-        # Clear stale script and caption artifacts when skipping AI or captions
-        script_file = output_dir / "script.txt"
-        captions_files = [output_dir / "captions.ass", output_dir / "captions.srt"]
-        if skip_ai and script_file.exists():
-            script_file.unlink()
-        if skip_ai or skip_captions:
-            for caption_path in captions_files:
-                if caption_path.exists():
-                    caption_path.unlink()
+        # Clean up all old files from previous jobs to prevent reuse
+        print("[CLEANUP] Removing old output files...")
+        
+        # Remove text files
+        for txt_file in ["script.txt", "hook.txt", "script_struct.json", "images.txt"]:
+            file_path = output_dir / txt_file
+            if file_path.exists():
+                file_path.unlink()
+        
+        # Remove audio files
+        for audio_file in ["voice.wav", "voice_hook.wav"]:
+            file_path = output_dir / audio_file
+            if file_path.exists():
+                file_path.unlink()
+        
+        # Remove video files
+        for video_file in ["hook.mp4", "body.mp4", "endcard.mp4", "final.mp4"]:
+            file_path = output_dir / video_file
+            if file_path.exists():
+                file_path.unlink()
+        
+        # Remove caption files
+        for caption_file in ["captions.ass", "captions.srt"]:
+            file_path = output_dir / caption_file
+            if file_path.exists():
+                file_path.unlink()
+        
+        # Clean images directory (but keep uploaded images safe in job dir)
+        images_dir = BASE_DIR / "images"
+        if images_dir.exists():
+            for img_file in images_dir.glob("img_*.jpg"):
+                img_file.unlink()
+            for img_file in images_dir.glob("img_*.png"):
+                img_file.unlink()
+        
+        # Clean videos directory (downloaded video clips)
+        videos_dir = BASE_DIR / "videos"
+        if videos_dir.exists():
+            for vid_file in videos_dir.glob("vid_*.mp4"):
+                vid_file.unlink()
+        
+        print("[CLEANUP] Old files removed, starting fresh")
         
         # Copy job-specific config to output directory for render script
         output_config = output_dir / "settings.yaml"
