@@ -220,6 +220,54 @@
             max-width: 1000px;
             margin: 40px auto 60px;
             padding: 0 20px;
+            position: relative;
+        }
+
+        .showcase-container {
+            position: relative;
+        }
+
+        .scroll-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(239, 68, 68, 0.9);
+            border: none;
+            color: white;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+        }
+
+        .scroll-btn:hover {
+            background: rgba(249, 115, 22, 0.95);
+            transform: translateY(-50%) scale(1.1);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6);
+        }
+
+        .scroll-btn.left {
+            left: -55px;
+        }
+
+        .scroll-btn.right {
+            right: -55px;
+        }
+
+        @media (max-width: 1150px) {
+            .scroll-btn.left {
+                left: 10px;
+            }
+            .scroll-btn.right {
+                right: 10px;
+            }
         }
 
         .showcase-grid {
@@ -227,6 +275,14 @@
             grid-template-columns: repeat(4, 1fr);
             gap: 15px;
             margin-top: 40px;
+            overflow-x: auto;
+            scroll-behavior: smooth;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .showcase-grid::-webkit-scrollbar {
+            display: none;
         }
 
         .showcase-box {
@@ -550,13 +606,18 @@
         <h2 class="section-title">See What You Can Create</h2>
         <p class="section-subtitle">Real examples from our creators</p>
         
-        <div class="showcase-grid" id="showcaseGrid">
-            <!-- Initial 4 static panels -->
-            <div class="showcase-box"><video data-static-src="/static/final.mp4" autoplay muted loop playsinline class="preview-clip"></video></div>
-            <div class="showcase-box"><video data-static-src="/static/video1.mp4" autoplay muted loop playsinline class="preview-clip"></video></div>
-            <div class="showcase-box"><video data-static-src="/static/video2.mp4" autoplay muted loop playsinline class="preview-clip"></video></div>
-            <div class="showcase-box"><video data-static-src="/static/video3.mp4" autoplay muted loop playsinline class="preview-clip"></video></div>
-            <!-- Remaining panels will be appended by JS to reach 8 on desktop / 4 on mobile -->
+        <div class="showcase-container">
+            <button class="scroll-btn left" onclick="scrollShowcase(-1)">‹</button>
+            <button class="scroll-btn right" onclick="scrollShowcase(1)">›</button>
+            
+            <div class="showcase-grid" id="showcaseGrid">
+                <!-- Initial 4 static panels -->
+                <div class="showcase-box"><video data-static-src="/static/final.mp4" autoplay muted loop playsinline class="preview-clip"></video></div>
+                <div class="showcase-box"><video data-static-src="/static/video1.mp4" autoplay muted loop playsinline class="preview-clip"></video></div>
+                <div class="showcase-box"><video data-static-src="/static/video2.mp4" autoplay muted loop playsinline class="preview-clip"></video></div>
+                <div class="showcase-box"><video data-static-src="/static/video3.mp4" autoplay muted loop playsinline class="preview-clip"></video></div>
+                <!-- Remaining panels will be appended by JS to reach 8 on desktop / 4 on mobile -->
+            </div>
         </div>
         
         <!-- Rotation Status -->
@@ -566,6 +627,16 @@
     </section>
     
     <script>
+        // Scroll showcase gallery
+        function scrollShowcase(direction) {
+            const grid = document.getElementById('showcaseGrid');
+            const scrollAmount = 300;
+            grid.scrollBy({
+                left: direction * scrollAmount,
+                behavior: 'smooth'
+            });
+        }
+
         // Auto-rotation across all panels
         const CLIP_DURATION = 10;            // seconds per clip loop
         const ROTATE_INTERVAL = 15000;       // ms between panel rotations
