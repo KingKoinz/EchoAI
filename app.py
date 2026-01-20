@@ -14,6 +14,42 @@ import threading
 import os
 import shutil
 
+# Cache for ffmpeg lookup
+FFMPEG_CANDIDATES = [
+    "ffmpeg",
+    str(Path.home() / "ffmpeg" / "bin" / "ffmpeg.exe"),
+    str(Path("C:/ffmpeg/bin/ffmpeg.exe")),
+    str(Path("C:/Program Files/ffmpeg/bin/ffmpeg.exe")),
+    str(Path("C:/Program Files (x86)/ffmpeg/bin/ffmpeg.exe")),
+    str(Path("C:/Program Files (x86)/HitPaw/HitPaw Watermark Remover/ffmpeg.exe")),
+]
+
+_FFMPEG_PATH = None
+
+
+def find_ffmpeg():
+    """Locate ffmpeg executable once and cache the result."""
+    global _FFMPEG_PATH
+    if _FFMPEG_PATH:
+        return _FFMPEG_PATH
+
+    for candidate in FFMPEG_CANDIDATES:
+        try:
+            subprocess.run(
+                [candidate, "-version"],
+                capture_output=True,
+                check=True,
+                timeout=5,
+            )
+            _FFMPEG_PATH = candidate
+            return _FFMPEG_PATH
+        except Exception:
+            continue
+
+    raise FileNotFoundError(
+        "ffmpeg executable not found. Install ffmpeg or add it to the system PATH."
+    )
+
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB total request limit
@@ -23,12 +59,18 @@ BASE_DIR = Path(__file__).resolve().parent
 JOBS_DIR = BASE_DIR / "jobs"
 JOBS_DIR.mkdir(exist_ok=True)
 
+FFMPEG_CANDIDATES.extend([
+    str(BASE_DIR / "ffmpeg" / "bin" / "ffmpeg.exe"),
+    str(BASE_DIR / "ffmpeg" / "ffmpeg.exe"),
+])
+
 SHOWCASE_DIR = BASE_DIR / "static" / "showcase"
 SHOWCASE_DIR.mkdir(exist_ok=True)
 SHOWCASE_TRACKER = BASE_DIR / "config" / "showcase.json"
 
 # Job status tracker
 JOBS = {}
+PIPELINE_LOCK = threading.Lock()
 
 def load_showcase():
     if SHOWCASE_TRACKER.exists():
@@ -98,15 +140,25 @@ def load_config():
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-def run_pipeline_async(job_id, topic, platform, style, voice, duration, transition, caption_style, content_type, logo_option, end_card_option, audio_source, skip_ai=False):
+def run_pipeline_async(job_id, topic, platform, style, voice, duration, transition, caption_style, content_type, logo_option, end_card_option, hook_option, audio_source, skip_ai=False, skip_captions=False):
     """Run video generation pipeline in background"""
+    wait_message_set = False
+    lock_acquired = False
     try:
-        JOBS[job_id]["status"] = "processing"
-        JOBS[job_id]["stage"] = "Generating script..." if not skip_ai else "Preparing media..."
-        
+        lock_acquired = PIPELINE_LOCK.acquire(blocking=False)
+        if not lock_acquired:
+            JOBS[job_id]["status"] = "processing"
+            JOBS[job_id]["stage"] = "Waiting for previous job to finish..."
+            wait_message_set = True
+            PIPELINE_LOCK.acquire()
+            lock_acquired = True
+        else:
+            JOBS[job_id]["status"] = "processing"
+            JOBS[job_id]["stage"] = "Generating script..." if not skip_ai else "Preparing media..."
+
         job_dir = JOBS_DIR / job_id
         job_dir.mkdir(exist_ok=True)
-        
+
         # Update config for this job
         config = load_config()
         config["video"]["duration_seconds"] = duration
@@ -114,7 +166,8 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         config["video"]["voice"] = voice
         config["video"]["transition"]["type"] = transition if transition != "none" else "fade"
         config["video"]["transition"]["enabled"] = transition != "none"
-        config["video"]["caption_style"] = caption_style
+        effective_caption_style = "none" if (skip_captions or skip_ai) else caption_style
+        config["video"]["caption_style"] = effective_caption_style
         config["video"]["render_mode"] = content_type
         
         # Update branding config
@@ -132,6 +185,12 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         else:
             config["branding"]["end_card"]["enabled"] = False
         
+        # Update hook config
+        if hook_option == "enabled":
+            config["video"]["hook"]["enabled"] = True
+        else:
+            config["video"]["hook"]["enabled"] = False
+        
         # Save job-specific config
         job_config = job_dir / "settings.yaml"
         with open(job_config, "w") as f:
@@ -140,6 +199,24 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         # Run pipeline scripts
         scripts_dir = BASE_DIR / "scripts"
         output_dir = BASE_DIR / "output"
+
+        if wait_message_set:
+            JOBS[job_id]["stage"] = "Generating script..." if not skip_ai else "Preparing media..."
+
+        # Reset voice track unless we are intentionally reusing it in skip mode
+        output_voice = output_dir / "voice.wav"
+        if output_voice.exists():
+            output_voice.unlink()
+
+        # Clear stale script and caption artifacts when skipping AI or captions
+        script_file = output_dir / "script.txt"
+        captions_files = [output_dir / "captions.ass", output_dir / "captions.srt"]
+        if skip_ai and script_file.exists():
+            script_file.unlink()
+        if skip_ai or skip_captions:
+            for caption_path in captions_files:
+                if caption_path.exists():
+                    caption_path.unlink()
         
         # Copy job-specific config to output directory for render script
         output_config = output_dir / "settings.yaml"
@@ -153,6 +230,25 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             cmd = [sys.executable, str(scripts_dir / "make_script.py"), topic]
             result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=600)
             print(f"✅ Script generated: {len(result.stdout)} chars")
+
+            # Read structured script for hook display on UI
+            try:
+                struct_path = output_dir / "script_struct.json"
+                if struct_path.exists():
+                    with open(struct_path, "r", encoding="utf-8") as sf:
+                        struct = json.load(sf)
+                    JOBS[job_id]["selected_hook"] = struct.get("selected_hook", "")
+                    JOBS[job_id]["hook_options"] = struct.get("hook_options", [])
+                    JOBS[job_id]["timeline"] = struct.get("render_timeline", [])
+                else:
+                    JOBS[job_id]["selected_hook"] = ""
+                    JOBS[job_id]["hook_options"] = []
+                    JOBS[job_id]["timeline"] = []
+            except Exception as hook_err:
+                print(f"⚠️ Failed to read script_struct.json: {hook_err}")
+                JOBS[job_id]["selected_hook"] = ""
+                JOBS[job_id]["hook_options"] = []
+                JOBS[job_id]["timeline"] = []
         else:
             # Skip AI - just use existing script.txt or create dummy
             JOBS[job_id]["stage"] = "Skipping AI generation..."
@@ -164,10 +260,15 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             JOBS[job_id]["progress"] = 40
             cmd = [sys.executable, str(scripts_dir / "make_voice.py")]
             subprocess.run(cmd, check=True, capture_output=True)
+            # Update hook audio availability
+            JOBS[job_id]["has_hook_audio"] = (output_dir / "voice_hook.wav").exists()
         else:
             JOBS[job_id]["progress"] = 40
+            JOBS[job_id]["has_hook_audio"] = False
         
         # Stage 3: Generate captions based on selected style (skip if skip_ai is True and caption_style is none)
+        caption_style = effective_caption_style
+
         if not skip_ai and caption_style != "none":
             JOBS[job_id]["stage"] = "Creating captions..."
             JOBS[job_id]["progress"] = 55
@@ -269,6 +370,34 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
                 print(f"ERROR: make_videos.py exception: {e}")
         elif uploaded_videos:
             print(f"✅ Using {len(uploaded_videos)} uploaded videos (skipping auto-download)")
+
+        # For skip-AI runs that replace the voice, push the uploaded audio into voice.wav
+        job_audio_source = JOBS[job_id].get("audio_source", "none")
+        job_audio_path = JOBS[job_id].get("audio_path")
+        if skip_ai and job_audio_source == "replace" and job_audio_path and Path(job_audio_path).exists():
+            try:
+                JOBS[job_id]["stage"] = "Preparing custom audio..."
+                ffmpeg_path = find_ffmpeg()
+                convert_cmd = [
+                    ffmpeg_path,
+                    "-y",
+                    "-i",
+                    str(job_audio_path),
+                    "-ar",
+                    "44100",
+                    "-ac",
+                    "2",
+                    str(output_voice),
+                ]
+                result = subprocess.run(convert_cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    raise RuntimeError(result.stderr or "ffmpeg conversion failed")
+                print("✅ Custom audio primed for skip-AI render")
+            except Exception as audio_err:
+                print(f"⚠️ Failed to prepare custom audio for skip-AI job {job_id}: {audio_err}")
+
+        if skip_ai and not output_voice.exists():
+            raise FileNotFoundError("Skip AI requires a custom audio file; voice track was not prepared correctly")
         
         # Stage 5: Render video based on content type
         JOBS[job_id]["stage"] = "Rendering video..."
@@ -296,37 +425,73 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             audio_source = JOBS[job_id].get("audio_source", "none")
             audio_path = JOBS[job_id].get("audio_path")
             
-            if audio_source != "none" and audio_path and Path(audio_path).exists():
+            if (
+                audio_source != "none"
+                and audio_path
+                and Path(audio_path).exists()
+                and not (skip_ai and audio_source == "replace")
+            ):
                 print(f" Adding custom audio layer ({audio_source})...")
                 JOBS[job_id]["stage"] = "Adding custom audio..."
                 JOBS[job_id]["progress"] = 95
                 
                 temp_video = job_dir / "temp_with_audio.mp4"
                 
-                if audio_source == "replace":
-                    # Replace audio completely
-                    cmd = [
-                        sys.executable, "-c",
-                        f"import subprocess; subprocess.run(['ffmpeg', '-y', '-i', '{job_video}', '-i', '{audio_path}', '-c:v', 'copy', '-map', '0:v', '-map', '1:a', '-shortest', '{temp_video}'], check=True)"
-                    ]
-                else:
-                    # Mix audio
-                    weights = {
-                        'mix_quiet': '1 0.2',
-                        'mix_medium': '1 0.5',
-                        'mix_loud': '1 0.8'
-                    }
-                    weight = weights.get(audio_source, '1 0.5')
-                    
-                    cmd = [
-                        sys.executable, "-c",
-                        f"import subprocess; subprocess.run(['ffmpeg', '-y', '-i', '{job_video}', '-i', '{audio_path}', '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first:weights={weight}[a]', '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '{temp_video}'], check=True)"
-                    ]
-                
                 try:
-                    subprocess.run(cmd, check=True, capture_output=True, shell=True)
+                    ffmpeg_path = find_ffmpeg()
+
+                    if audio_source == "replace":
+                        cmd = [
+                            ffmpeg_path,
+                            "-y",
+                            "-i",
+                            str(job_video),
+                            "-i",
+                            str(audio_path),
+                            "-c:v",
+                            "copy",
+                            "-map",
+                            "0:v",
+                            "-map",
+                            "1:a",
+                            "-shortest",
+                            str(temp_video),
+                        ]
+                    else:
+                        weights = {
+                            "mix_quiet": "1 0.2",
+                            "mix_medium": "1 0.5",
+                            "mix_loud": "1 0.8",
+                        }
+                        weight = weights.get(audio_source, "1 0.5")
+
+                        cmd = [
+                            ffmpeg_path,
+                            "-y",
+                            "-i",
+                            str(job_video),
+                            "-i",
+                            str(audio_path),
+                            "-filter_complex",
+                            f"[0:a][1:a]amix=inputs=2:duration=first:weights={weight}:dropout_transition=3[a]",
+                            "-map",
+                            "0:v",
+                            "-map",
+                            "[a]",
+                            "-c:v",
+                            "copy",
+                            "-c:a",
+                            "aac",
+                            "-shortest",
+                            str(temp_video),
+                        ]
+
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        raise RuntimeError(result.stderr or "ffmpeg audio merge failed")
+
                     shutil.move(str(temp_video), str(job_video))
-                    print(f" Custom audio added successfully")
+                    print(" Custom audio added successfully")
                 except Exception as e:
                     print(f" Warning: Failed to add custom audio: {e}")
             
@@ -354,6 +519,12 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         JOBS[job_id]["stage"] = f"Error: {str(e)}"
         JOBS[job_id]["progress"] = 0
         JOBS[job_id]["error"] = str(e)
+    finally:
+        if lock_acquired:
+            try:
+                PIPELINE_LOCK.release()
+            except RuntimeError:
+                pass
 
 @app.route("/")
 def index():
@@ -406,10 +577,15 @@ def generate_video():
         transition = data.get("transition", "fade")
         logo_option = data.get("logo_option", "none")
         end_card_option = data.get("end_card_option", "enabled")
+        hook_option = data.get("hook_option", "enabled")
         caption_style = data.get("caption_style", "bounce")
         content_type = data.get("content_type", "images")
         audio_source = data.get("audio_source", "none")
         skip_ai = data.get("skip_ai", "false").lower() == "true"
+        skip_captions = data.get("skip_captions", "false").lower() == "true"
+
+        if skip_ai and audio_source != "replace":
+            return jsonify({"error": "Skip AI mode requires audio source set to Replace with a custom upload."}), 400
         
         if not topic and not skip_ai:
             return jsonify({"error": "Topic is required"}), 400
@@ -500,6 +676,9 @@ def generate_video():
                     file.save(str(file_path))
                     uploaded_video_paths.append(str(file_path))
         
+        if skip_ai and audio_source == "replace" and uploaded_audio_path is None:
+            return jsonify({"error": "Upload a custom audio file when using Skip AI mode."}), 400
+
         JOBS[job_id] = {
             "id": job_id,
             "topic": topic,
@@ -515,6 +694,7 @@ def generate_video():
             "video_paths": uploaded_video_paths,
             "audio_source": audio_source,
             "audio_path": str(uploaded_audio_path) if uploaded_audio_path else None,
+            "skip_captions": skip_captions,
             "status": "queued",
             "stage": "Initializing...",
             "progress": 0,
@@ -524,7 +704,7 @@ def generate_video():
         # Start processing in background thread
         thread = threading.Thread(
             target=run_pipeline_async,
-            args=(job_id, topic, platform, style, voice, duration, transition, caption_style, content_type, logo_option, end_card_option, audio_source, skip_ai)
+            args=(job_id, topic, platform, style, voice, duration, transition, caption_style, content_type, logo_option, end_card_option, hook_option, audio_source, skip_ai, skip_captions)
         )
         thread.daemon = True
         thread.start()

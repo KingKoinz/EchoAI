@@ -7,9 +7,48 @@ from datetime import datetime
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = BASE_DIR / "output" / "script.txt"
-VOICE_PATH = BASE_DIR / "output" / "voice.wav"
+STRUCT_JSON_PATH = BASE_DIR / "output" / "script_struct.json"
+HOOK_TXT_PATH = BASE_DIR / "output" / "hook.txt"
+VOICE_PATH = BASE_DIR / "output" / "voice.wav"            # body voice
+VOICE_HOOK_PATH = BASE_DIR / "output" / "voice_hook.wav"   # hook voice
 USAGE_TRACKER = BASE_DIR / "config" / "voice_usage.json"
 CONFIG_PATH = BASE_DIR / "config" / "settings.yaml"
+
+def find_ffmpeg():
+    """Find ffmpeg executable"""
+    import shutil as _shutil
+    paths = [
+        "ffmpeg",
+        r"C:\\ffmpeg\\bin\\ffmpeg.exe",
+        r"C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
+        r"C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe",
+        r"C:\\Users\\Walt\\Downloads\\ffmpeg\\ffmpeg-master-latest-win64-gpl\\bin\\ffmpeg.exe",
+    ]
+    for p in paths:
+        if _shutil.which(p):
+            return p
+    return "ffmpeg"  # fall back; may be on PATH
+
+def transcode_to_pcm_wav(src: Path):
+    """Transcode any audio file at src to true PCM WAV mono 48kHz, overwriting src.
+    Handles cases where TTS saved MP3 with .wav extension.
+    """
+    if not src.exists():
+        return
+    ffmpeg = find_ffmpeg()
+    tmp = src.with_suffix(".tmp.wav")
+    try:
+        subprocess.run([
+            ffmpeg, "-y", "-nostdin", "-i", str(src),
+            "-ac", "1", "-ar", "48000", "-sample_fmt", "s16",
+            str(tmp)
+        ], check=True)
+        # Replace original
+        src.write_bytes(tmp.read_bytes())
+        tmp.unlink(missing_ok=True)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        # If transcode fails, keep original
 
 def load_config():
     """Load settings from YAML config"""
@@ -90,19 +129,29 @@ async def generate_eleven_labs(text: str):
         print(f"Eleven Labs failed: {response.status_code}")
         return False
 
-async def generate_edge_tts(text: str, voice: str = "en-US-GuyNeural", rate: str = "+0%"):
+async def generate_edge_tts(text: str, out_path: Path, voice: str = "en-US-GuyNeural", rate: str = "+0%"):
     """Generate voice using Edge TTS (free unlimited)"""
     import edge_tts
-    
     communicate = edge_tts.Communicate(text, voice, rate=rate)
-    await communicate.save(str(VOICE_PATH))
+    await communicate.save(str(out_path))
 
 def main():
     if not SCRIPT_PATH.exists():
-        raise FileNotFoundError("script.txt not found. Run make_video.py first.")
+        raise FileNotFoundError("script.txt not found. Run make_script.py first.")
 
-    text = SCRIPT_PATH.read_text(encoding="utf-8").strip()
-    if not text:
+    body_text = SCRIPT_PATH.read_text(encoding="utf-8").strip()
+    hook_text = HOOK_TXT_PATH.read_text(encoding="utf-8").strip() if HOOK_TXT_PATH.exists() else ""
+    
+    # Remove surrounding quotes if present
+    if body_text.startswith('"') and body_text.endswith('"'):
+        body_text = body_text[1:-1]
+    
+    # Remove hook text from body if hook exists
+    if hook_text and body_text.startswith(hook_text):
+        body_text = body_text[len(hook_text):].strip()
+        print(f"Removed hook text from body (hook is {len(hook_text)} chars)")
+    
+    if not body_text:
         raise ValueError("script.txt is empty.")
 
     # Load config for voice selection
@@ -115,32 +164,41 @@ def main():
     usage = get_usage_data()
     remaining = quota - usage["count"]
     
-    print(f"Generating voice audio...")
+    print(f"Generating voice audio (hook + body)...")
     print(f"Voice: {selected_voice}")
     print(f"Eleven Labs quota: {usage['count']}/{quota} used this month ({remaining} remaining)")
     
     try:
         # Try Eleven Labs if within quota
+        body_done = False
         if can_use_eleven_labs():
-            print("Using Eleven Labs (premium quality)...")
-            success = asyncio.run(generate_eleven_labs(text))
-            
+            print("Using Eleven Labs (premium quality) for body...")
+            success = asyncio.run(generate_eleven_labs(body_text))
             if success:
-                print(f"Voice saved to: {VOICE_PATH}")
-                print(f"Premium voice used! {remaining - 1} left this month")
-                return
+                print(f"Body voice saved to: {VOICE_PATH}")
+                transcode_to_pcm_wav(VOICE_PATH)
+                body_done = True
             else:
-                print("Eleven Labs failed, falling back to Edge TTS...")
+                print("Eleven Labs failed for body, falling back to Edge TTS...")
         
         # Fallback to Edge TTS (free, unlimited)
-        if remaining == 0:
-            print("Quota reached - using Edge TTS (still great quality!)")
-        else:
-            print("Using Edge TTS (free unlimited backup)")
-        
-        import edge_tts
-        asyncio.run(generate_edge_tts(text, selected_voice, voice_rate))
-        print(f"Voice saved to: {VOICE_PATH}")
+        if not body_done:
+            if remaining == 0:
+                print("Quota reached - using Edge TTS for body")
+            else:
+                print("Using Edge TTS for body (backup)")
+            import edge_tts
+            asyncio.run(generate_edge_tts(body_text, VOICE_PATH, selected_voice, voice_rate))
+            print(f"Body voice saved to: {VOICE_PATH}")
+            transcode_to_pcm_wav(VOICE_PATH)
+
+        # Generate hook voice at natural rate (no speed-up)
+        if hook_text:
+            print("Generating hook voice (natural rate)...")
+            import edge_tts
+            asyncio.run(generate_edge_tts(hook_text, VOICE_HOOK_PATH, selected_voice, "+0%"))
+            print(f"Hook voice saved to: {VOICE_HOOK_PATH}")
+            transcode_to_pcm_wav(VOICE_HOOK_PATH)
         
     except ImportError:
         print("edge-tts not installed. Falling back to pyttsx3...")
@@ -158,9 +216,14 @@ def main():
                 engine.setProperty("voice", voice.id)
                 break
         
-        engine.save_to_file(text, str(VOICE_PATH))
+        engine.save_to_file(body_text, str(VOICE_PATH))
         engine.runAndWait()
         print(f"Voice saved to: {VOICE_PATH}")
+        if hook_text:
+            # pyttsx3 fallback for hook (no rate control)
+            engine.save_to_file(hook_text, str(VOICE_HOOK_PATH))
+            engine.runAndWait()
+            print(f"Hook voice saved to: {VOICE_HOOK_PATH}")
 
 if __name__ == "__main__":
     main()
