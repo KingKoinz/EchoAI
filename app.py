@@ -173,6 +173,7 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         # Update branding config
         if logo_option == "default":
             config["branding"]["logo"]["enabled"] = True
+            config["branding"]["logo"]["image_path"] = "images/echo_transparent.png"  # Reset to default
         elif logo_option == "upload" and JOBS[job_id].get("logo_path"):
             config["branding"]["logo"]["enabled"] = True
             config["branding"]["logo"]["image_path"] = JOBS[job_id]["logo_path"]
@@ -339,11 +340,7 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             images_dir = BASE_DIR / "images"
             images_dir.mkdir(exist_ok=True)
             
-            print(f"✅ Copying {len(uploaded_images)} uploaded images to {images_dir}")
-            
-            # Clear existing images
-            for img in images_dir.glob("img_*.*"):
-                img.unlink()
+            print(f"[SUCCESS] Copying {len(uploaded_images)} uploaded images to {images_dir}")
             
             # Copy uploaded files
             for idx, src_path in enumerate(uploaded_images):
@@ -357,10 +354,6 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             videos_dir = BASE_DIR / "videos"
             videos_dir.mkdir(exist_ok=True)
             
-            # Clear existing videos
-            for vid in videos_dir.glob("video_*.mp4"):
-                vid.unlink()
-            
             # Copy uploaded files
             for idx, src_path in enumerate(uploaded_videos):
                 src = Path(src_path)
@@ -369,24 +362,16 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         
         # Auto-download if no uploads provided
         if not uploaded_images and content_type in ["images", "combo"]:
-            # Clear old images before downloading new ones
-            images_dir = BASE_DIR / "images"
-            images_dir.mkdir(exist_ok=True)
-            for img in images_dir.glob("img_*.*"):
-                img.unlink()
-            
-            print(f"🔍 Auto-downloading images (no uploads, content_type={content_type})")
+            print(f"[AUTO] Downloading images (no uploads, content_type={content_type})")
             # Auto-download images
             cmd = [sys.executable, str(scripts_dir / "make_images.py")]
             subprocess.run(cmd, check=True, capture_output=True)
         elif uploaded_images:
-            print(f"✅ Using {len(uploaded_images)} uploaded images (skipping auto-download)")
+            print(f"[SUCCESS] Using {len(uploaded_images)} uploaded images (skipping auto-download)")
         
         if not uploaded_videos and content_type in ["videos", "combo"]:
-            # Clear old videos before downloading new ones
             videos_dir = BASE_DIR / "videos"
             videos_dir.mkdir(exist_ok=True)
-            for vid in videos_dir.glob("video_*.mp4"):
                 vid.unlink()
             
             print(f"🔍 Auto-downloading videos (no uploads, content_type={content_type})")
