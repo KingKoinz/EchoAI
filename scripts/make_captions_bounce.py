@@ -12,7 +12,7 @@ OUTPUT_DIR = BASE_DIR / "output"
 AUDIO = OUTPUT_DIR / "voice.wav"
 ASS_OUT = OUTPUT_DIR / "captions.ass"
 
-MAX_WORDS_VISIBLE = 4  # Show 4 words at a time, like TikTok
+MAX_WORDS_VISIBLE = 2  # Show previous and current word only
 
 
 def sec_to_ass(t: float) -> str:
@@ -73,42 +73,55 @@ def main():
 
     # Create captions with word buffer (shows multiple words)
     word_buffer = []
+    captions = []
     
     for i, current_word in enumerate(all_words):
         word_buffer.append(current_word)
         
-        # Keep only the last N words
         if len(word_buffer) > MAX_WORDS_VISIBLE:
             word_buffer.pop(0)
         
-        # Build the caption text with current word highlighted in yellow
-        caption_parts = []
-        for j, buf_word in enumerate(word_buffer):
-            if j == len(word_buffer) - 1:  # This is the current/newest word
-                # Highlight in yellow with bounce animation
-                caption_parts.append(
-                    r"{\c&H00FFFF&}"  # Yellow color
-                    r"{\t(0,100,\fscx115\fscy115)}"  # Scale up
-                    r"{\t(100,200,\fscx100\fscy100)}"  # Scale back
-                    + buf_word["text"]
-                    + r"{\c&HFFFFFF&}"  # Reset to white
-                )
-            else:
-                # Previous words stay white, no animation
-                caption_parts.append(buf_word["text"])
-        
-        full_caption = " ".join(caption_parts)
-        
-        start = sec_to_ass(current_word["start"])
-        end = sec_to_ass(current_word["end"])
-        
-        ass_lines.append(
-            f"Dialogue: 0,{start},{end},Default,,0,0,0,,{full_caption}"
-        )
-        
-        # Clear buffer at sentence boundaries for better readability
+        # First line: previous word(s) (white, no bounce)
+        prev_text = " ".join([w["text"] for w in word_buffer[:-1]]) if len(word_buffer) > 1 else ""
+        # Second line: current word (yellow, bounce)
+        curr_word = word_buffer[-1]["text"]
+        curr_bounce = r"{\c&H00FFFF&}{\t(0,100,\fscx115\fscy115)}{\t(100,200,\fscx100\fscy100)}" + curr_word + r"{\c&HFFFFFF&}"
+
+        start_time = word_buffer[0]["start"]
+        if i < len(all_words) - 1:
+            next_word_start = all_words[i + 1]["start"]
+            extended_end = min(current_word["end"] + 0.5, next_word_start)
+            end_time = extended_end
+        else:
+            # Last word - extend duration
+            end_time = current_word["end"] + 1.0
+
+        # Add stacked lines with different vertical margins
+        if prev_text:
+            captions.append({
+                "start": start_time,
+                "end": end_time,
+                "text": prev_text,
+                "margin_v": 220  # Higher up
+            })
+        captions.append({
+            "start": start_time,
+            "end": end_time,
+            "text": curr_bounce,
+            "margin_v": 180  # Lower, closer to bottom
+        })
+
         if is_sentence_end(current_word["text"]):
             word_buffer.clear()
+    
+    # Now create ASS dialogues from the captions
+    for caption in captions:
+        start = sec_to_ass(caption["start"])
+        end = sec_to_ass(caption["end"])
+        margin_v = caption.get("margin_v", 180)
+        ass_lines.append(
+            f"Dialogue: 0,{start},{end},Default,,0,0,{margin_v},,{caption['text']}"
+        )
 
     ASS_OUT.write_text("\n".join(ass_lines), encoding="utf-8")
     print(f" TikTok-style bouncing captions written to: {ASS_OUT}")
