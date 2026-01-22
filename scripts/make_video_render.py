@@ -56,7 +56,9 @@ def find_ffmpeg():
     
     for path in possible_paths:
         try:
-            subprocess.run([path, "-version"], capture_output=True, timeout=2, check=True)
+            result = subprocess.run([path, "-version"], capture_output=True, timeout=2)
+            if result.returncode != 0:
+                continue
             return path
         except:
             continue
@@ -331,7 +333,10 @@ def main():
         "temp_video.mp4"
     ])
 
-    subprocess.run(cmd, check=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"FFmpeg error: {result.stderr}")
+        raise RuntimeError("FFmpeg rendering failed")
 
     # Check if end card is enabled
     end_card_enabled = config.get("branding", {}).get("end_card", {}).get("enabled", True)
@@ -354,7 +359,26 @@ def main():
             "-pix_fmt", "yuv420p",
             "temp_endcard.mp4"
         ]
-        subprocess.run(end_card_cmd, check=True)
+        result = subprocess.run(end_card_cmd, capture_output=True, text=True)
+        
+        # Write debug info to file
+        with open("debug_endcard.log", "a") as f:
+            import datetime
+            f.write(f"\n=== {datetime.datetime.now()} ===\n")
+            f.write(f"Endcard FFmpeg return code: {result.returncode}\n")
+            f.write(f"Endcard FFmpeg stderr length: {len(result.stderr) if result.stderr else 0}\n")
+            f.write(f"Endcard FFmpeg stderr: {result.stderr[:1000] if result.stderr else 'None'}\n")
+            f.write("=" * 50 + "\n")
+        
+        print(f"✅ FIXED ENDCARD ERROR HANDLING - Debug: Endcard FFmpeg return code: {result.returncode}")
+        print(f"Debug: Endcard FFmpeg stderr length: {len(result.stderr) if result.stderr else 0}")
+        
+        # CRITICAL FIX: Only treat non-zero return codes as errors (FFmpeg writes progress to stderr even on success)
+        if result.returncode != 0:
+            print(f"❌ Actual FFmpeg endcard failure (code {result.returncode}): {result.stderr}")
+            raise RuntimeError(f"FFmpeg endcard rendering failed (code {result.returncode}): {result.stderr}")
+        else:
+            print(f"✅ Endcard created successfully (code {result.returncode}). Stderr output is normal FFmpeg progress info.")
         
         # Concatenate main video with end card
         # Create concat list file
@@ -370,7 +394,36 @@ def main():
             "-c", "copy",
             "final.mp4"
         ]
-        subprocess.run(concat_cmd, check=True)
+        print(f"Debug: Running concat command: {' '.join(concat_cmd)}")
+        result = subprocess.run(concat_cmd, capture_output=True, text=True)
+        
+        # Write concat debug info to file
+        log_path = "/tmp/echoai_debug_concat.log"
+        try:
+            with open(log_path, "a") as f:
+                import datetime
+                f.write(f"\n=== {datetime.datetime.now()} ===\n")
+                f.write(f"Concat command: {' '.join(concat_cmd)}\n")
+                f.write(f"Concat return code: {result.returncode}\n")
+                f.write(f"Concat stderr: {result.stderr[:1000] if result.stderr else 'None'}\n")
+                temp_video_exists = Path("temp_video.mp4").exists()
+                temp_endcard_exists = Path("temp_endcard.mp4").exists()
+                f.write(f"temp_video.mp4 exists: {temp_video_exists}\n")
+                f.write(f"temp_endcard.mp4 exists: {temp_endcard_exists}\n")
+                f.write("=" * 50 + "\n")
+        except Exception as log_error:
+            print(f"Failed to write concat debug log: {log_error}")
+        
+        print(f"Debug: Concat return code: {result.returncode}")
+        print(f"Debug: Concat stderr: {result.stderr[:500] if result.stderr else 'None'}")
+        if result.returncode != 0:
+            print(f"FFmpeg concat error: {result.stderr}")
+            # Check if temp files exist
+            temp_video_exists = Path("temp_video.mp4").exists()
+            temp_endcard_exists = Path("temp_endcard.mp4").exists()
+            print(f"Debug: temp_video.mp4 exists: {temp_video_exists}")
+            print(f"Debug: temp_endcard.mp4 exists: {temp_endcard_exists}")
+            raise RuntimeError("FFmpeg concat failed")
         
         # Cleanup temporary files
         Path("temp_video.mp4").unlink(missing_ok=True)

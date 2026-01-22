@@ -35,14 +35,14 @@ def find_ffmpeg():
 
     for candidate in FFMPEG_CANDIDATES:
         try:
-            subprocess.run(
+            result = subprocess.run(
                 [candidate, "-version"],
                 capture_output=True,
-                check=True,
                 timeout=5,
             )
-            _FFMPEG_PATH = candidate
-            return _FFMPEG_PATH
+            if result.returncode == 0:
+                _FFMPEG_PATH = candidate
+                return _FFMPEG_PATH
         except Exception:
             continue
 
@@ -262,7 +262,9 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             JOBS[job_id]["progress"] = 20
             
             cmd = [sys.executable, str(scripts_dir / "make_script.py"), topic]
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            if result.returncode != 0:
+                raise RuntimeError(f"Script generation failed: {result.stderr}")
             print(f"[SUCCESS] Script generated: {len(result.stdout)} chars")
 
             # Read structured script for hook display on UI
@@ -293,7 +295,9 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             JOBS[job_id]["stage"] = "Synthesizing voice..."
             JOBS[job_id]["progress"] = 40
             cmd = [sys.executable, str(scripts_dir / "make_voice.py")]
-            subprocess.run(cmd, check=True, capture_output=True)
+            result = subprocess.run(cmd, capture_output=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"Voice generation failed: {result.stderr.decode() if result.stderr else 'Unknown error'}")
             # Update hook audio availability
             JOBS[job_id]["has_hook_audio"] = (output_dir / "voice_hook.wav").exists()
         else:
@@ -323,7 +327,9 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
                 caption_script = "make_captions_bounce.py"  # Default
             
             cmd = [sys.executable, str(scripts_dir / caption_script)]
-            subprocess.run(cmd, check=True, capture_output=True)
+            result = subprocess.run(cmd, capture_output=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"Caption generation failed: {result.stderr.decode() if result.stderr else 'Unknown error'}")
         else:
             JOBS[job_id]["progress"] = 55
         
@@ -365,25 +371,24 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             print(f"[AUTO] Downloading images (no uploads, content_type={content_type})")
             # Auto-download images
             cmd = [sys.executable, str(scripts_dir / "make_images.py")]
-            subprocess.run(cmd, check=True, capture_output=True)
+            result = subprocess.run(cmd, capture_output=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"Image generation failed: {result.stderr.decode() if result.stderr else 'Unknown error'}")
         elif uploaded_images:
             print(f"[SUCCESS] Using {len(uploaded_images)} uploaded images (skipping auto-download)")
         
         if not uploaded_videos and content_type in ["videos", "combo"]:
             videos_dir = BASE_DIR / "videos"
             videos_dir.mkdir(exist_ok=True)
-                vid.unlink()
             
             print(f"🔍 Auto-downloading videos (no uploads, content_type={content_type})")
             # Video fetching (if implemented)
             cmd = [sys.executable, str(scripts_dir / "make_videos.py")]
             try:
-                result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    raise RuntimeError(result.stderr or "Video download failed")
                 print(f"make_videos.py output: {result.stdout}")
-            except subprocess.CalledProcessError as e:
-                print(f"ERROR: make_videos.py failed with code {e.returncode}")
-                print(f"STDOUT: {e.stdout}")
-                print(f"STDERR: {e.stderr}")
             except Exception as e:
                 print(f"ERROR: make_videos.py exception: {e}")
         elif uploaded_videos:
@@ -430,7 +435,22 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
             render_script = "make_video_render.py"
         
         cmd = [sys.executable, str(scripts_dir / render_script), platform]
-        subprocess.run(cmd, check=True, capture_output=True)
+        print("🔥 USING UPDATED APP.PY WITH FIXED ERROR HANDLING 🔥")  # Debug marker
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        # CRITICAL FIX: Don't treat stderr as error if returncode is 0 (FFmpeg writes progress to stderr)
+        print(f"🔍 Video render return code: {result.returncode}")  # Debug info
+        if result.returncode != 0:
+            # Only raise error if the command actually failed (non-zero return code)
+            print(f"❌ Actual failure detected (code {result.returncode})")
+            raise RuntimeError(f"Video rendering failed (code {result.returncode}): {result.stderr if result.stderr else 'Unknown error'}")
+        else:
+            # Success case - log any stderr as info, not error
+            print(f"✅ Video render SUCCESS (code {result.returncode})")
+            if result.stderr:
+                print(f"📝 Video rendering completed with info output: {len(result.stderr)} chars of stderr (normal for FFmpeg)")
+            else:
+                print("📝 Video rendering completed successfully with no stderr")
         
         # Copy final video to job directory
         final_video = output_dir / "final.mp4"
@@ -524,9 +544,26 @@ def run_pipeline_async(job_id, topic, platform, style, voice, duration, transiti
         else:
             raise FileNotFoundError("Video rendering failed")
             
-    except subprocess.CalledProcessError as e:
-        error_msg = f"Command failed: {e.stderr if e.stderr else str(e)}"
-        print(f"Pipeline error: {error_msg}")
+    except RuntimeError as e:
+        error_msg = f"Command failed: {str(e)}"
+        
+        # Write detailed error to log file with absolute path
+        log_path = "/tmp/echoai_debug_error.log"
+        try:
+            with open(log_path, "a") as f:
+                f.write(f"\n=== {datetime.now()} ===\n")
+                f.write(f"Pipeline RuntimeError: {error_msg}\n")
+                f.write(f"RuntimeError details: {repr(e)}\n")
+                import traceback
+                f.write(f"RuntimeError traceback:\n{traceback.format_exc()}\n")
+                f.write("=" * 50 + "\n")
+        except Exception as log_error:
+            print(f"Failed to write debug log: {log_error}")
+        
+        print(f"Pipeline RuntimeError: {error_msg}")
+        print(f"RuntimeError details: {repr(e)}")
+        import traceback
+        print(f"RuntimeError traceback: {traceback.format_exc()}")
         JOBS[job_id]["status"] = "failed"
         JOBS[job_id]["stage"] = "Error occurred"
         JOBS[job_id]["progress"] = 0

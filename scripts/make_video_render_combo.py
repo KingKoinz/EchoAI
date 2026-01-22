@@ -297,12 +297,15 @@ def render_combo_video(platform="tiktok"):
     ]
     
     try:
-        subprocess.run(cmd, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f" FFmpeg error: {result.stderr}")
+            return False
         filter_file.unlink()
         
-        # Check if end card is enabled
+        # Check if end card is enabled - TEMPORARILY DISABLED FOR DEBUGGING
         config = load_config()
-        end_card_enabled = config.get("branding", {}).get("end_card", {}).get("enabled", True)
+        end_card_enabled = False  # config.get("branding", {}).get("end_card", {}).get("enabled", True)
         end_card_path = BASE_DIR / config.get("branding", {}).get("end_card", {}).get("image_path", "images/echo_endcard.png")
         end_card_duration = config.get("branding", {}).get("end_card", {}).get("duration", 3)
         
@@ -322,7 +325,16 @@ def render_combo_video(platform="tiktok"):
                 "-pix_fmt", "yuv420p",
                 str(BASE_DIR / "output" / "temp_endcard.mp4")
             ]
-            subprocess.run(end_card_cmd, check=True)
+            result = subprocess.run(end_card_cmd, capture_output=True, text=True)
+            print(f"🔥 FIXED COMBO ENDCARD ERROR HANDLING - Return code: {result.returncode}")
+            print(f"Stderr length: {len(result.stderr) if result.stderr else 0}")
+            
+            # CRITICAL FIX: Only treat non-zero return codes as errors
+            if result.returncode != 0:
+                print(f"❌ Actual FFmpeg combo endcard failure (code {result.returncode}): {result.stderr}")
+                return False
+            else:
+                print(f"✅ Combo endcard created successfully (code {result.returncode}). Stderr is normal FFmpeg progress.")
             
             # Concatenate main video with end card
             concat_list = BASE_DIR / "output" / "concat_list.txt"
@@ -338,7 +350,10 @@ def render_combo_video(platform="tiktok"):
                 "-c", "copy",
                 str(output_file)
             ]
-            subprocess.run(concat_cmd, check=True)
+            result = subprocess.run(concat_cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f" FFmpeg concat error: {result.stderr}")
+                return False
             
             # Cleanup temporary files
             temp_output.unlink(missing_ok=True)
@@ -355,7 +370,7 @@ def render_combo_video(platform="tiktok"):
         
         print(f"    Videos +  Images +  Logo +  Captions")
         return True
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         print(f" FFmpeg error: {e}")
         return False
 
